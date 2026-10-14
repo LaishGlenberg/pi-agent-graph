@@ -10,8 +10,8 @@ builder.set_shared_goal("Design a new feature for my website: a modern, sleek, p
 planner, worker = builder.get_scenario("checklist_iteration").get_agents()
 
 loader = builder.get_agent_loader()
-planner.set_command(loader.get("plannerv2"))
-worker.set_command(loader.get("workerv3"))
+planner.set_command(loader.get("planner_example"))
+worker.set_command(loader.get("worker_example"))
 
 planner.set_prompt("Start working on the plan: decide which libraries and React components to use and what the styles should be, create a checklist, then hand the first group of tasks to the worker.")
 

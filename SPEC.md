@@ -72,6 +72,7 @@ launchers/
   __init__.py        launch(), LaunchOptions, LaunchResult
   validation.py      Preflight checks
   ordering.py        Responders-first ordering
+  script.py          Shared launch-script renderer (print + bash)
   print.py           PrintBackend
   bash.py            BashBackend
   terminal.py        TerminalBackend (per-OS dispatch)
@@ -341,14 +342,18 @@ class LaunchResult:
 
 ### 10.1 `print`
 
-Renders each command with POSIX quoting to stdout, one per line, and returns a
-`LaunchResult` with `pids=[None, ...]`. No processes are started. Used by tests
-and a `--dry-run` mode.
+Renders the *same launch script* the `bash` backend writes (for the current
+platform) to stdout and returns a `LaunchResult` with `pids=[None, ...]`. No
+processes are started. Used by tests and `AgentGraphBuilder.start_dry`.
+
+The script is produced by a single shared renderer (`launchers/script.py`), so a
+dry run is an exact preview of `save_bash`.
 
 ### 10.2 `bash`
 
 Writes a script that reproduces the launch (opening a terminal per agent) so a
-flow can be re-run by hand. The script:
+flow can be re-run by hand. The script is rendered by the same shared function
+as the `print` backend (`launchers/script.py`). It:
 
 - has a shebang (`#!/usr/bin/env bash`) and a header comment recording the
   `run_id`, timestamp, and the raw command for each agent;

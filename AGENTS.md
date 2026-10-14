@@ -32,6 +32,7 @@ src/pi_agent_graph/
     types.py       LaunchOptions + LaunchResult dataclasses
     validation.py  Preflight checks (runs before anything launches)
     ordering.py    Responders-first ordering
+    script.py      Shared launch-script renderer (print + bash)
     print.py       PrintBackend   (dry-run / tests)
     bash.py        BashBackend    (writes .sh / .cmd)
     terminal.py    TerminalBackend + pure per-OS invocation builders
