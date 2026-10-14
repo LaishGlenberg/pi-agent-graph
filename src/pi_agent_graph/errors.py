@@ -37,3 +37,15 @@ class ValidationError(PiAgentGraphError):
 
 class LaunchError(PiAgentGraphError):
     """A launch backend could not start an agent."""
+
+
+class FixtureError(PiAgentGraphError):
+    """Base class for fixture save/load errors."""
+
+
+class FixtureNotFoundError(FixtureError):
+    """The requested fixture file does not exist on disk."""
+
+
+class FixtureFormatError(FixtureError):
+    """A fixture is malformed: bad/missing fields, identifier mismatch, etc."""
