@@ -123,6 +123,8 @@ system-prompt injection a *replace*, not an append.
 - `set_session_dir(path)`
 - `set_system_prompt(text)` — replaces the agent's system prompt
 - `set_prompt(text)`
+- `set_cwd(path)` — the directory the agent starts in
+- `set_dir(path)` — alias for `set_cwd`
 - `set_option(flag, value)` — replaces `flag` inside `base_argv` if present,
   else appends; used for arbitrary pass-through flags.
 
@@ -357,7 +359,8 @@ as the `print` backend (`launchers/script.py`). It:
 
 - has a shebang (`#!/usr/bin/env bash`) and a header comment recording the
   `run_id`, timestamp, and the raw command for each agent;
-- `cd`s to the recorded `cwd` if any;
+- `cd`s to the recorded `cwd` if any (on Windows each `start` also passes
+  `/D <agent.cwd>`, so a per-agent working directory wins over the shared one);
 - invokes the same per-OS terminal dispatch as `TerminalBackend`.
 
 Target extension/platform: `.sh` for POSIX, `.cmd` for Windows; `options.platform`
@@ -370,11 +373,16 @@ Opens a real terminal window per agent, detached. Dispatch by platform:
 
 **Windows**
 
+Both cases first write a temp `.cmd` containing
+`subprocess.list2cmdline(argv)` (newlines collapsed), then open that script
+with `cmd /k` so the window stays open. The raw agent command is never handed
+to `wt` directly: `wt` parses its own command line and treats `;` (and
+newlines) as command separators, which would split a system prompt containing
+semicolons into several bogus commands — one window each.
+
 1. If `wt` (Windows Terminal) is on `PATH`:
-   `wt -w 0 nt --title <name> -d <cwd> <argv...>`.
-2. Otherwise write a temp `.cmd` containing
-   `subprocess.list2cmdline(argv)` and launch it with
-   `cmd /c start "" cmd /k <tempfile>` so the window stays open.
+   `wt -w 0 nt --title <name> -d <cwd> cmd /k <tempfile>`.
+2. Otherwise: `cmd /c start "" cmd /k <tempfile>`.
 
 **macOS**
 
@@ -419,10 +427,13 @@ class AgentGraphBuilder:
 
     def get_agent_loader(self, path: str | None = None) -> ConfigLoader: ...
     def start(self, agents: list[Agent], *, backend="terminal",
-              options: LaunchOptions | None = None) -> LaunchResult: ...
+              options: LaunchOptions | None = None,
+              cwd: str | None = None) -> LaunchResult: ...
     def start_dry(self, agents: list[Agent], *,
-                  options: LaunchOptions | None = None) -> LaunchResult: ...
-    def save_bash(self, agents: list[Agent], path: str) -> str: ...
+                  options: LaunchOptions | None = None,
+                  cwd: str | None = None) -> LaunchResult: ...
+    def save_bash(self, agents: list[Agent], path: str, *,
+                  cwd: str | None = None) -> str: ...
 ```
 
 `ScenarioBuilder` (returned by `get_scenario`) renders role prompts using the

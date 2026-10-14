@@ -153,3 +153,42 @@ def test_save_bash(tmp_path):
     path = builder.save_bash(agents, str(out))
     assert path == str(out)
     assert out.exists()
+
+
+def test_start_applies_cwd_to_agents(tmp_path):
+    builder = AgentGraphBuilder()
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    for agent in (planner, worker):
+        agent.set_command(["pi", "-ne"])
+    builder.start([planner, worker], backend="print", cwd=str(tmp_path))
+    assert planner.cwd == str(tmp_path)
+    assert worker.cwd == str(tmp_path)
+
+
+def test_start_cwd_does_not_override_existing_agent_cwd(tmp_path):
+    builder = AgentGraphBuilder()
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    for agent in (planner, worker):
+        agent.set_command(["pi", "-ne"])
+    planner.set_dir("/keep")
+    builder.start([planner, worker], backend="print", cwd=str(tmp_path))
+    assert planner.cwd == "/keep"
+    assert worker.cwd == str(tmp_path)
+
+
+def test_start_dry_applies_cwd(tmp_path):
+    builder = AgentGraphBuilder()
+    agents = builder.get_scenario("subagent_scouting").get_agents()
+    for agent in agents:
+        agent.set_command(["pi", "-ne"])
+    result = builder.start_dry(agents, cwd=str(tmp_path))
+    assert all(agent.cwd == str(tmp_path) for agent in result.agents)
+
+
+def test_save_bash_applies_cwd(tmp_path):
+    builder = AgentGraphBuilder()
+    agents = builder.get_scenario("subagent_scouting").get_agents()
+    for agent in agents:
+        agent.set_command(["pi", "-ne"])
+    builder.save_bash(agents, str(tmp_path / "flow.sh"), cwd=str(tmp_path))
+    assert all(agent.cwd == str(tmp_path) for agent in agents)

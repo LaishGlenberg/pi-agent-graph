@@ -50,11 +50,18 @@ LINUX_EMULATORS: tuple[str, ...] = (
 def windows_wt_command(
     cmd: Sequence[str], name: str, cwd: str | None = None
 ) -> list[str]:
-    """Windows Terminal invocation for *cmd*."""
+    """Windows Terminal invocation for *cmd*.
+
+    ``wt`` parses its own command line and treats ``;`` as a command separator.
+    The Windows backend therefore never hands it a raw agent command: it
+    writes a ``.cmd`` script and passes ``cmd /k <script>`` instead. This
+    helper still collapses embedded newlines (also separators to ``wt``) so
+    any caller that does pass a raw command stays safe.
+    """
     argv = ["wt", "-w", "0", "nt", "--title", name]
     if cwd:
         argv += ["-d", cwd]
-    return argv + list(cmd)
+    return argv + normalize_windows_args(cmd)
 
 
 def windows_start_command(script_path: str | Path) -> list[str]:
@@ -168,11 +175,19 @@ class TerminalBackend:
     ) -> list[str]:
         cwd = agent.cwd
         if platform.startswith("win"):
-            if self._which("wt"):
-                return windows_wt_command(cmd, agent.name or agent.role, cwd)
+            # Never pass the raw agent command to `wt`: it treats `;` as a
+            # command separator, which splits a system prompt into several
+            # bogus commands (one window each). Render a .cmd script instead
+            # and let cmd.exe run it, where the prompt is just quoted text.
             script = write_temp_script(
                 build_windows_script(cmd, cwd), suffix=".cmd"
             )
+            if self._which("wt"):
+                return windows_wt_command(
+                    ["cmd", "/k", str(script)],
+                    agent.name or agent.role,
+                    cwd,
+                )
             return windows_start_command(script)
         if platform == "darwin":
             return macos_osascript_command(cmd, cwd)

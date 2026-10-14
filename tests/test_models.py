@@ -167,6 +167,7 @@ def test_set_option_managed_flag_routes_to_field():
         ("set_system_prompt", "system_prompt", "sp"),
         ("set_prompt", "prompt", "p"),
         ("set_cwd", "cwd", "/c"),
+        ("set_dir", "cwd", "/d"),
     ],
 )
 def test_setters(method, attr, value):

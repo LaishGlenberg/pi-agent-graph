@@ -71,8 +71,12 @@ def _windows_script(
     ]
     if cwd:
         lines.append(f'cd /d "{cwd}"')
-    for _agent, cmd in pairs:
-        lines.append('start "" ' + quote_windows(normalize_windows_args(cmd)))
+    for agent, cmd in pairs:
+        start_dir = agent.cwd or cwd
+        prefix = 'start ""'
+        if start_dir:
+            prefix += f' /D "{start_dir}"'
+        lines.append(prefix + " " + quote_windows(normalize_windows_args(cmd)))
     lines.append("")
     return "\r\n".join(lines) + "\r\n"
 

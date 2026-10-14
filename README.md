@@ -98,15 +98,19 @@ planner.set_prompt(
     "then create the checklist and hand off to the worker."
 )
 
+# Start every agent in a workspace. Per-agent overrides win, so
+# `planner.set_dir("C:/work/api")` (or `set_cwd`) takes precedence.
+workspace = "C:/Users/lg/projects/my-app"
+
 # Preview exactly what will run, without opening anything.
-builder.start_dry([planner, worker])
+builder.start_dry([planner, worker], cwd=workspace)
 
 # The worker (no prompt) launches first; the planner launches last.
-result = builder.start([planner, worker])
+result = builder.start([planner, worker], cwd=workspace)
 print(result.commands)  # exact argv per agent, in launch order
 
 # The same flow as a reproducible script.
-builder.save_bash([planner, worker], path="flows/checklist.sh")
+builder.save_bash([planner, worker], path="flows/checklist.sh", cwd=workspace)
 ```
 
 The lower-level API is importable on its own for custom flows:
@@ -136,7 +140,7 @@ shared context into the agent's system prompt.
 
 | Platform | `terminal` backend |
 | --- | --- |
-| Windows | Windows Terminal (`wt`) when present, else a temp `.cmd` opened with `cmd /c start`. |
+| Windows | A temp `.cmd` is opened with `cmd /k`, via Windows Terminal (`wt`) when present, else `cmd /c start`. This keeps `wt` from splitting system prompts on `;`. |
 | macOS | Terminal.app via `osascript`. |
 | Linux | `tmux` when inside a session, else `wt` → `gnome-terminal` → `konsole` → `xfce4-terminal` → `kitty` → `alacritty` → `xterm`. |
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pi_agent_graph.errors import LaunchError
@@ -67,6 +69,14 @@ def test_windows_wt_command_without_cwd():
         "w",
         "pi",
     ]
+
+
+def test_windows_wt_command_collapses_newlines():
+    argv = windows_wt_command(
+        ["pi", "--system-prompt", "line1\nline2\n\nline3"], "worker"
+    )
+    assert all("\n" not in token for token in argv)
+    assert "line1 line2 line3" in argv
 
 
 def test_windows_start_command():
@@ -159,10 +169,27 @@ def test_backend_windows_prefers_wt():
     assert invocation[0] == "wt"
 
 
+def test_backend_windows_wt_routes_through_generated_script():
+    agent = make()
+    agent.set_system_prompt("line1\nline2; line3")
+    backend = TerminalBackend(which=which_only("wt"), popen=FakePopen)
+    invocation = backend._invocation(agent.build_argv(), agent, "win32")
+    assert invocation[:6] == ["wt", "-w", "0", "nt", "--title", "worker"]
+    assert invocation[6:8] == ["cmd", "/k"]
+    script = Path(invocation[8])
+    assert script.suffix == ".cmd"
+    assert script.exists()
+    assert "line1 line2; line3" in script.read_text(encoding="utf-8")
+    # The raw prompt (with its `;`) must never reach wt's command line.
+    assert not any("line1" in token or ";" in token for token in invocation)
+
+
 def test_backend_windows_falls_back_to_cmd_script():
     backend = TerminalBackend(which=lambda name: None, popen=FakePopen)
     invocation = backend._invocation(["pi"], make(), "win32")
     assert invocation[:4] == ["cmd", "/c", "start", ""]
+    assert invocation[4:6] == ["cmd", "/k"]
+    assert Path(invocation[6]).suffix == ".cmd"
 
 
 def test_backend_linux_tmux(monkeypatch):

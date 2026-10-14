@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
 from .models import Agent, Role, Scenario
@@ -31,6 +33,21 @@ def render_system_prompt(
         description=role.description,
         context=context,
     )
+
+
+def _with_cwd(
+    options: LaunchOptions | None, cwd: str | None
+) -> LaunchOptions | None:
+    """Return *options* with ``cwd`` applied, or ``None`` unchanged.
+
+    ``cwd`` overrides any ``options.cwd``; a fresh ``LaunchOptions`` is built
+    only when needed, so a caller's options object is never mutated.
+    """
+    if cwd is None:
+        return options
+    if options is None:
+        return LaunchOptions(cwd=cwd)
+    return replace(options, cwd=cwd)
 
 
 class ScenarioBuilder:
@@ -111,20 +128,41 @@ class AgentGraphBuilder:
         *,
         backend: str | None = None,
         options: LaunchOptions | None = None,
+        cwd: str | None = None,
     ) -> LaunchResult:
-        return launch(agents, backend=backend, options=options)
+        """Launch *agents*, optionally starting each one in *cwd*.
+
+        ``cwd`` applies to every agent that does not already have its own
+        working directory set (see :meth:`Agent.set_cwd`), so per-agent values
+        win.
+        """
+        return launch(
+            agents,
+            backend=backend,
+            options=_with_cwd(options, cwd),
+        )
 
     def start_dry(
-        self, agents: list[Agent], *, options: LaunchOptions | None = None
+        self,
+        agents: list[Agent],
+        *,
+        options: LaunchOptions | None = None,
+        cwd: str | None = None,
     ) -> LaunchResult:
         """Print the commands :meth:`start` would run, without launching."""
-        return launch(agents, backend="print", options=options)
+        return launch(
+            agents,
+            backend="print",
+            options=_with_cwd(options, cwd),
+        )
 
-    def save_bash(self, agents: list[Agent], path: str) -> str:
+    def save_bash(
+        self, agents: list[Agent], path: str, *, cwd: str | None = None
+    ) -> str:
         result = launch(
             agents,
             backend="bash",
-            options=LaunchOptions(bash_path=path),
+            options=_with_cwd(LaunchOptions(bash_path=path), cwd),
         )
         assert result.path is not None
         return result.path

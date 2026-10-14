@@ -133,6 +133,10 @@ class Agent:
     def set_cwd(self, path: str) -> None:
         self.cwd = path
 
+    def set_dir(self, path: str) -> None:
+        """Alias for :meth:`set_cwd`: the agent's working directory."""
+        self.set_cwd(path)
+
     # -- rendering --------------------------------------------------------
     def build_argv(self) -> list[str]:
         """Return a fresh, fully-assembled argv. Never mutates ``self``."""

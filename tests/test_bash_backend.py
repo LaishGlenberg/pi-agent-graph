@@ -145,6 +145,30 @@ def test_render_windows_includes_cwd():
     assert 'cd /d "C:/work"' in script
 
 
+def test_render_windows_uses_shared_cwd_for_each_start():
+    script = render_bash_script(
+        [make("worker")], run_id="r", platform="win32", cwd="C:/work"
+    )
+    assert 'start "" /D "C:/work"' in script
+
+
+def test_render_windows_prefers_per_agent_cwd():
+    agent = make("worker")
+    agent.set_dir("C:/work/api")
+    script = render_bash_script([agent], run_id="r", platform="win32")
+    assert 'start "" /D "C:/work/api"' in script
+
+
+def test_render_windows_per_agent_cwd_beats_shared_cwd():
+    agent = make("worker")
+    agent.set_cwd("C:/work/api")
+    script = render_bash_script(
+        [agent], run_id="r", platform="win32", cwd="C:/shared"
+    )
+    assert 'start "" /D "C:/work/api"' in script
+    assert 'start "" /D "C:/shared"' not in script
+
+
 def test_render_windows_collapses_multiline_prompt():
     agent = make("worker", argv=("pi",))
     agent.set_system_prompt("line1\nline2\n\nline3")
