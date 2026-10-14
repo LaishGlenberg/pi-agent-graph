@@ -10,6 +10,7 @@ fields by hand.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,12 +42,19 @@ def _optional_str(value: object, label: str) -> str | None:
     return value
 
 
-def _text_field(data: dict, key: str) -> str:
+def _text_field(data: Mapping[str, object], key: str) -> str:
     value = data.get(key, "")
     if value is None:
         return ""
     if not isinstance(value, str):
         raise FixtureFormatError(f"fixture {key!r} must be a string")
+    return value
+
+
+def _required_str(data: Mapping[str, object], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise FixtureFormatError(f"fixture {key!r} must be a non-empty string")
     return value
 
 
@@ -63,11 +71,11 @@ class RoleFixture:
     prompt: str | None = None
     name: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str | None]:
         return {"config": self.config, "prompt": self.prompt, "name": self.name}
 
     @classmethod
-    def from_dict(cls, data: dict) -> RoleFixture:
+    def from_dict(cls, data: object) -> RoleFixture:
         if not isinstance(data, dict):
             raise FixtureFormatError("role fixture must be a mapping")
         return cls(
@@ -92,7 +100,7 @@ class ScenarioFixture:
         if not isinstance(self.scenario, str) or not self.scenario.strip():
             raise FixtureFormatError("fixture 'scenario' must be a non-empty string")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         return {
             "identifier": self.identifier,
             "scenario": self.scenario,
@@ -102,7 +110,7 @@ class ScenarioFixture:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> ScenarioFixture:
+    def from_dict(cls, data: object) -> ScenarioFixture:
         if not isinstance(data, dict):
             raise FixtureFormatError("fixture must be a mapping")
         raw_roles = data.get("roles") or {}
@@ -110,8 +118,8 @@ class ScenarioFixture:
             raise FixtureFormatError("fixture 'roles' must be a mapping")
         roles = {key: RoleFixture.from_dict(value) for key, value in raw_roles.items()}
         return cls(
-            identifier=data.get("identifier"),
-            scenario=data.get("scenario"),
+            identifier=_required_str(data, "identifier"),
+            scenario=_required_str(data, "scenario"),
             shared_goal=_text_field(data, "shared_goal"),
             shared_context=_text_field(data, "shared_context"),
             roles=roles,

@@ -35,9 +35,7 @@ def validate(agents: list[Agent], backend: str, options: LaunchOptions) -> None:
 
     for name, roles in names.items():
         if len(roles) > 1:
-            errors.append(
-                f"duplicate session name {name!r} used by roles {roles}"
-            )
+            errors.append(f"duplicate session name {name!r} used by roles {roles}")
 
     if backend not in KNOWN_BACKENDS:
         errors.append(

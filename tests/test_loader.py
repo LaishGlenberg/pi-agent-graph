@@ -142,9 +142,7 @@ def test_get_resolves_via_runner(tmp_path, monkeypatch):
     def fake_runner(argv, env):
         captured["argv"] = list(argv)
         captured["env"] = dict(env)
-        return subprocess.CompletedProcess(
-            argv, 0, "pi -ne 'a b' --name worker", ""
-        )
+        return subprocess.CompletedProcess(argv, 0, "pi -ne 'a b' --name worker", "")
 
     monkeypatch.setattr(loader_mod.shutil, "which", lambda name: "/usr/bin/pi-cli")
     result = ConfigLoader(path, runner=fake_runner).get("worker")

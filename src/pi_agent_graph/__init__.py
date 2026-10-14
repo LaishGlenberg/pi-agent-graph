@@ -32,6 +32,7 @@ from .scenarios import SCENARIOS, get_scenario, scenario_names
 __version__ = "0.1.0"
 
 __all__ = [
+    "SCENARIOS",
     "Agent",
     "AgentGraphBuilder",
     "ConfigLoader",
@@ -52,7 +53,6 @@ __all__ = [
     "ScenarioBuilder",
     "ScenarioFixture",
     "ScenarioNotFoundError",
-    "SCENARIOS",
     "ValidationError",
     "__version__",
     "fixture_path",

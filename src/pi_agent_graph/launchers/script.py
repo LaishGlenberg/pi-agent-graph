@@ -8,7 +8,7 @@ run always shows exactly what ``save_bash`` would write.
 from __future__ import annotations
 
 import shutil
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from ..models import Agent
 from ..quoting import join_posix, quote_posix, quote_windows

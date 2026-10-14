@@ -41,7 +41,10 @@ def test_save_and_load_round_trip(tmp_path):
     assert path.exists()
 
     loader = StubLoader(
-        {"planner_cfg": ["pi", "--model", "fast"], "worker_cfg": ["pi", "--model", "thorough"]}
+        {
+            "planner_cfg": ["pi", "--model", "fast"],
+            "worker_cfg": ["pi", "--model", "thorough"],
+        }
     )
     builder2 = AgentGraphBuilder(loader=loader)
     scenario_builder = builder2.load_saved("demo", directory=tmp_path)

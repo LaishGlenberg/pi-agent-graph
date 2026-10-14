@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from pi_agent_graph.launchers import LaunchOptions, launch
 from pi_agent_graph.launchers.bash import render_bash_script
 from pi_agent_graph.models import Agent
@@ -131,9 +129,7 @@ def test_render_darwin_uses_osascript():
 
 
 def test_render_windows_uses_start():
-    script = render_bash_script(
-        [make("worker")], run_id="r", platform="win32"
-    )
+    script = render_bash_script([make("worker")], run_id="r", platform="win32")
     assert 'start ""' in script
     assert "cd /d" not in script
 
@@ -162,9 +158,7 @@ def test_render_windows_prefers_per_agent_cwd():
 def test_render_windows_per_agent_cwd_beats_shared_cwd():
     agent = make("worker")
     agent.set_cwd("C:/work/api")
-    script = render_bash_script(
-        [agent], run_id="r", platform="win32", cwd="C:/shared"
-    )
+    script = render_bash_script([agent], run_id="r", platform="win32", cwd="C:/shared")
     assert 'start "" /D "C:/work/api"' in script
     assert 'start "" /D "C:/shared"' not in script
 

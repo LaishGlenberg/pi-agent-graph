@@ -6,7 +6,7 @@ that only prints help in v1.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 HELP = """\
 pi-agent-graph: build and launch multi-agent pi workflows.

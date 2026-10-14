@@ -26,7 +26,9 @@ def which_only(target: str):
     return lambda name: f"/usr/bin/{name}" if name == target else None
 
 
-def make(role: str = "worker", cwd: str | None = None, prompt: str | None = None) -> Agent:
+def make(
+    role: str = "worker", cwd: str | None = None, prompt: str | None = None
+) -> Agent:
     agent = Agent(role=role, cwd=cwd, prompt=prompt)
     agent.set_command(["pi", "-ne"])
     return agent
@@ -122,9 +124,7 @@ def test_choose_linux_emulator_prefers_first_available():
 
 
 def test_choose_linux_emulator_specific():
-    assert (
-        choose_linux_emulator(which_only("konsole")) == "konsole"
-    )
+    assert choose_linux_emulator(which_only("konsole")) == "konsole"
 
 
 def test_choose_linux_emulator_none():
@@ -159,7 +159,7 @@ def test_macos_osascript_command():
     assert cmd[0] == "osascript"
     assert any("Terminal" in part for part in cmd)
     assert any("cd " in part for part in cmd)
-    assert any("\\\"" in part for part in cmd)
+    assert any('\\"' in part for part in cmd)
 
 
 # -- backend invocation selection -----------------------------------------
@@ -214,9 +214,7 @@ def test_backend_linux_no_emulator_raises():
 
 def test_backend_launch_returns_pids_and_commands():
     backend = TerminalBackend(which=which_only("xterm"), popen=FakePopen)
-    result = backend.launch(
-        [make()], LaunchOptions(run_id="r", platform="linux"), "r"
-    )
+    result = backend.launch([make()], LaunchOptions(run_id="r", platform="linux"), "r")
     assert result.pids == [4242]
     assert result.commands == [["pi", "-ne", "--name", "worker"]]
     assert result.backend == "terminal"

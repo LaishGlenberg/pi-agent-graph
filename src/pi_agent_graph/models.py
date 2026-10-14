@@ -9,8 +9,8 @@ side-effect free.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 # Managed flag -> dataclass field name.
 MANAGED_FLAGS: dict[str, str] = {

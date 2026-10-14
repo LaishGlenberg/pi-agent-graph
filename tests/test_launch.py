@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from pi_agent_graph.errors import ValidationError
@@ -90,7 +88,9 @@ def test_launch_empty_roster_raises():
 
 
 def test_launch_uses_options_backend():
-    result = launch([make("worker")], options=LaunchOptions(backend="print", run_id="r"))
+    result = launch(
+        [make("worker")], options=LaunchOptions(backend="print", run_id="r")
+    )
     assert result.backend == "print"
 
 

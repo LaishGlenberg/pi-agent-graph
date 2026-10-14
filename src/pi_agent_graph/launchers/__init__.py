@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from ..models import Agent
 from .bash import BashBackend
@@ -14,7 +15,16 @@ from .terminal import TerminalBackend
 from .types import LaunchOptions, LaunchResult
 from .validation import BANNED_FLAGS, KNOWN_BACKENDS, validate
 
-BACKENDS = {
+
+class Backend(Protocol):
+    """Structural type shared by the launch backends."""
+
+    def launch(
+        self, agents: list[Agent], options: LaunchOptions, run_id: str
+    ) -> LaunchResult: ...
+
+
+BACKENDS: dict[str, type[Backend]] = {
     "print": PrintBackend,
     "bash": BashBackend,
     "terminal": TerminalBackend,
@@ -23,7 +33,7 @@ BACKENDS = {
 
 def new_run_id() -> str:
     """Generate a sortable, collision-resistant run id."""
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return f"{stamp}-{uuid.uuid4().hex[:6]}"
 
 

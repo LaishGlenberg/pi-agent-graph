@@ -7,7 +7,7 @@ these so quoting is defined in exactly one place.
 from __future__ import annotations
 
 import subprocess
-from typing import Sequence
+from collections.abc import Sequence
 
 
 def quote_posix(value: str) -> str:

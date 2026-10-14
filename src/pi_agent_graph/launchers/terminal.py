@@ -14,8 +14,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any
 
 from ..errors import LaunchError
 from ..models import Agent
@@ -34,6 +35,7 @@ def normalize_windows_args(argv: Sequence[str]) -> list[str]:
     multi-line system prompts are common here. The change is cosmetic.
     """
     return [_NEWLINE_RE.sub(" ", token) for token in argv]
+
 
 LINUX_EMULATORS: tuple[str, ...] = (
     "wt",
@@ -69,9 +71,7 @@ def windows_start_command(script_path: str | Path) -> list[str]:
     return ["cmd", "/c", "start", "", "cmd", "/k", str(script_path)]
 
 
-def build_windows_script(
-    cmd: Sequence[str], cwd: str | None = None
-) -> str:
+def build_windows_script(cmd: Sequence[str], cwd: str | None = None) -> str:
     """Render a ``.cmd`` script that runs *cmd* (used when ``wt`` is absent)."""
     lines = ["@echo off"]
     if cwd:
@@ -113,38 +113,36 @@ def linux_emulator_command(
         argv = ["gnome-terminal", "--title", name]
         if cwd:
             argv.append(f"--working-directory={cwd}")
-        return argv + ["--", "bash", "-lc", keep_open]
+        return [*argv, "--", "bash", "-lc", keep_open]
     if emulator == "konsole":
         argv = ["konsole", "--title", name]
         if cwd:
             argv += ["--workdir", cwd]
-        return argv + ["-e", "bash", "-lc", keep_open]
+        return [*argv, "-e", "bash", "-lc", keep_open]
     if emulator == "xfce4-terminal":
         argv = ["xfce4-terminal", "--title", name]
         if cwd:
             argv.append(f"--working-directory={cwd}")
-        return argv + ["-x", "bash", "-lc", keep_open]
+        return [*argv, "-x", "bash", "-lc", keep_open]
     if emulator == "kitty":
         argv = ["kitty", "--title", name]
         if cwd:
             argv += ["--directory", cwd]
-        return argv + ["bash", "-lc", keep_open]
+        return [*argv, "bash", "-lc", keep_open]
     if emulator == "alacritty":
         argv = ["alacritty", "--title", name]
         if cwd:
             argv += ["--working-directory", cwd]
-        return argv + ["-e", "bash", "-lc", keep_open]
+        return [*argv, "-e", "bash", "-lc", keep_open]
     # xterm and any other unknown emulator fall back to xterm-style flags.
     argv = [emulator, "-T", name]
     if cwd:
         argv += ["-e", "bash", "-lc", f"cd {quote_posix(cwd)} && {keep_open}"]
         return argv
-    return argv + ["-e", "bash", "-lc", keep_open]
+    return [*argv, "-e", "bash", "-lc", keep_open]
 
 
-def macos_osascript_command(
-    cmd: Sequence[str], cwd: str | None = None
-) -> list[str]:
+def macos_osascript_command(cmd: Sequence[str], cwd: str | None = None) -> list[str]:
     """Open Terminal.app via AppleScript running *cmd*."""
     script = join_posix(cmd)
     if cwd:
@@ -165,23 +163,19 @@ class TerminalBackend:
     def __init__(
         self,
         which: Which | None = None,
-        popen: Callable[..., subprocess.Popen] | None = None,
+        popen: Callable[..., subprocess.Popen[Any]] | None = None,
     ) -> None:
         self._which = which or shutil.which
         self._popen = popen or subprocess.Popen
 
-    def _invocation(
-        self, cmd: list[str], agent: Agent, platform: str
-    ) -> list[str]:
+    def _invocation(self, cmd: list[str], agent: Agent, platform: str) -> list[str]:
         cwd = agent.cwd
         if platform.startswith("win"):
             # Never pass the raw agent command to `wt`: it treats `;` as a
             # command separator, which splits a system prompt into several
             # bogus commands (one window each). Render a .cmd script instead
             # and let cmd.exe run it, where the prompt is just quoted text.
-            script = write_temp_script(
-                build_windows_script(cmd, cwd), suffix=".cmd"
-            )
+            script = write_temp_script(build_windows_script(cmd, cwd), suffix=".cmd")
             if self._which("wt"):
                 return windows_wt_command(
                     ["cmd", "/k", str(script)],
@@ -203,9 +197,7 @@ class TerminalBackend:
                 + ", ".join(LINUX_EMULATORS)
                 + ")"
             )
-        return linux_emulator_command(
-            emulator, cmd, agent.name or agent.role, cwd
-        )
+        return linux_emulator_command(emulator, cmd, agent.name or agent.role, cwd)
 
     def launch(
         self, agents: list[Agent], options: LaunchOptions, run_id: str

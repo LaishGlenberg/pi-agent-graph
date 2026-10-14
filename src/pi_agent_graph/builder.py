@@ -10,7 +10,8 @@ from .errors import FixtureFormatError
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
 from .models import Agent, Role, Scenario
-from .scenarios import SCENARIOS, get_scenario as _lookup_scenario
+from .scenarios import SCENARIOS
+from .scenarios import get_scenario as _lookup_scenario
 
 SYSTEM_PROMPT_TEMPLATE = """\
 You are a helpful assistant working with other agents.
@@ -38,9 +39,7 @@ def render_system_prompt(
     )
 
 
-def _with_cwd(
-    options: LaunchOptions | None, cwd: str | None
-) -> LaunchOptions | None:
+def _with_cwd(options: LaunchOptions | None, cwd: str | None) -> LaunchOptions | None:
     """Return *options* with ``cwd`` applied, or ``None`` unchanged.
 
     ``cwd`` overrides any ``options.cwd``; a fresh ``LaunchOptions`` is built
@@ -58,7 +57,7 @@ class ScenarioBuilder:
 
     def __init__(
         self,
-        builder: "AgentGraphBuilder",
+        builder: AgentGraphBuilder,
         scenario: Scenario,
         fixture: fixtures.ScenarioFixture | None = None,
     ) -> None:
@@ -139,9 +138,7 @@ class AgentGraphBuilder:
     def set_shared_context(self, text: str) -> None:
         self.shared_context = text
 
-    def render_system_prompt(
-        self, role: Role, scenario_description: str = ""
-    ) -> str:
+    def render_system_prompt(self, role: Role, scenario_description: str = "") -> str:
         return render_system_prompt(
             role,
             scenario_description,
@@ -179,9 +176,7 @@ class AgentGraphBuilder:
         role_keys = set(roles or {}) | set(prompts or {}) | set(names or {})
         for key in role_keys:
             if key not in scenario_obj.roles:
-                raise FixtureFormatError(
-                    f"role {key!r} not in scenario {scenario!r}"
-                )
+                raise FixtureFormatError(f"role {key!r} not in scenario {scenario!r}")
         role_fixtures: dict[str, fixtures.RoleFixture] = {}
         for key in role_keys:
             role_fixtures[key] = fixtures.RoleFixture(
@@ -196,7 +191,9 @@ class AgentGraphBuilder:
             shared_context=self.shared_context,
             roles=role_fixtures,
         )
-        target = path if path is not None else fixtures.fixture_path(identifier, directory)
+        target = (
+            path if path is not None else fixtures.fixture_path(identifier, directory)
+        )
         return fixtures.save_fixture(fixture, target)
 
     def load_saved(
@@ -212,7 +209,9 @@ class AgentGraphBuilder:
         carrying the fixture so its per-role overrides apply in
         :meth:`ScenarioBuilder.get_agents`.
         """
-        target = path if path is not None else fixtures.fixture_path(identifier, directory)
+        target = (
+            path if path is not None else fixtures.fixture_path(identifier, directory)
+        )
         fixture = fixtures.load_fixture(target)
         self.shared_goal = fixture.shared_goal
         self.shared_context = fixture.shared_context

@@ -13,8 +13,9 @@ import os
 import shlex
 import shutil
 import subprocess
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Any
 
 from .errors import (
     ConfigNotFoundError,
@@ -26,7 +27,9 @@ from .errors import (
 
 CONFIG_FILENAME = "config.json"
 
-Runner = Callable[[Sequence[str], Mapping[str, str]], "subprocess.CompletedProcess[str]"]
+Runner = Callable[
+    [Sequence[str], Mapping[str, str]], "subprocess.CompletedProcess[str]"
+]
 
 
 def default_config_dir() -> Path:
@@ -104,11 +107,9 @@ class ConfigLoader:
         self._runner = runner or _default_runner
 
     # -- reading ----------------------------------------------------------
-    def _read_config(self) -> dict:
+    def _read_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
-            raise ConfigNotFoundError(
-                f"pi-cli config not found: {self.config_path}"
-            )
+            raise ConfigNotFoundError(f"pi-cli config not found: {self.config_path}")
         try:
             text = self.config_path.read_text(encoding="utf-8")
         except OSError as error:  # pragma: no cover - unusual IO failure
@@ -127,7 +128,7 @@ class ConfigLoader:
             )
         return data
 
-    def _agents(self) -> dict:
+    def _agents(self) -> dict[str, Any]:
         agents = self._read_config().get("agents")
         if agents is None:
             return {}
@@ -164,7 +165,7 @@ class ConfigLoader:
             f"could not find {self.pi_cli_bin!r} on PATH or as a path"
         )
 
-    def get(self, name: str) -> list[str]:
+    def get(self, name: str) -> Sequence[str]:
         """Expand a saved config name into a full ``pi`` argv list."""
         self.get_raw(name)  # validate existence first, with a clear error
         executable = self._resolve_executable()
