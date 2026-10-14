@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
+from . import fixtures
+from .errors import FixtureFormatError
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
 from .models import Agent, Role, Scenario
@@ -53,11 +56,29 @@ def _with_cwd(
 class ScenarioBuilder:
     """Materializes a :class:`Scenario` into :class:`Agent` objects."""
 
-    def __init__(self, builder: "AgentGraphBuilder", scenario: Scenario) -> None:
+    def __init__(
+        self,
+        builder: "AgentGraphBuilder",
+        scenario: Scenario,
+        fixture: fixtures.ScenarioFixture | None = None,
+    ) -> None:
         self.builder = builder
         self.scenario = scenario
+        self.fixture = fixture
+
+    def _validate_fixture(self) -> None:
+        """Raise :class:`FixtureFormatError` on unknown fixture role keys."""
+        if self.fixture is None:
+            return
+        for key in self.fixture.roles:
+            if key not in self.scenario.roles:
+                raise FixtureFormatError(
+                    f"fixture {self.fixture.identifier!r} has role {key!r} "
+                    f"not in scenario {self.scenario.key!r}"
+                )
 
     def get_agents(self) -> list[Agent]:
+        self._validate_fixture()
         agents: list[Agent] = []
         builder = self.builder
         for name, role in self.scenario.roles.items():
@@ -71,6 +92,17 @@ class ScenarioBuilder:
             loader = builder._loader
             if role.config and loader is not None:
                 agent.set_command(loader.get(role.config))
+            # Fixture wins over scenario defaults when present for this role.
+            if self.fixture is not None:
+                fixture_role = self.fixture.roles.get(name)
+                if fixture_role is not None:
+                    if fixture_role.config:
+                        fixture_loader = builder.get_agent_loader()
+                        agent.set_command(fixture_loader.get(fixture_role.config))
+                    if fixture_role.name:
+                        agent.set_name(fixture_role.name)
+                    if fixture_role.prompt:
+                        agent.set_prompt(fixture_role.prompt)
             agents.append(agent)
         return agents
 
@@ -112,6 +144,68 @@ class AgentGraphBuilder:
 
     def get_scenario(self, key: str) -> ScenarioBuilder:
         return ScenarioBuilder(self, _lookup_scenario(key))
+
+    # -- fixtures ---------------------------------------------------------
+    def save_fixture(
+        self,
+        identifier: str,
+        scenario: str,
+        *,
+        roles: dict[str, str] | None = None,
+        prompts: dict[str, str] | None = None,
+        names: dict[str, str] | None = None,
+        directory: str | Path | None = None,
+        path: str | Path | None = None,
+    ) -> Path:
+        """Write a fixture for *scenario* and return the written path.
+
+        ``roles`` maps a role name to a pi-cli command name; ``prompts`` and
+        ``names`` optionally map a role name to a starting prompt / display
+        name. ``shared_goal`` / ``shared_context`` default to the builder's
+        current values.
+        """
+        scenario_obj = _lookup_scenario(scenario)
+        role_keys = set(roles or {}) | set(prompts or {}) | set(names or {})
+        for key in role_keys:
+            if key not in scenario_obj.roles:
+                raise FixtureFormatError(
+                    f"role {key!r} not in scenario {scenario!r}"
+                )
+        role_fixtures: dict[str, fixtures.RoleFixture] = {}
+        for key in role_keys:
+            role_fixtures[key] = fixtures.RoleFixture(
+                config=(roles or {}).get(key),
+                prompt=(prompts or {}).get(key),
+                name=(names or {}).get(key),
+            )
+        fixture = fixtures.ScenarioFixture(
+            identifier=identifier,
+            scenario=scenario,
+            shared_goal=self.shared_goal,
+            shared_context=self.shared_context,
+            roles=role_fixtures,
+        )
+        target = path if path is not None else fixtures.fixture_path(identifier, directory)
+        return fixtures.save_fixture(fixture, target)
+
+    def load_saved(
+        self,
+        identifier: str,
+        *,
+        directory: str | Path | None = None,
+        path: str | Path | None = None,
+    ) -> ScenarioBuilder:
+        """Load a saved fixture, backfilling shared goal/context.
+
+        Returns a :class:`ScenarioBuilder` bound to the fixture's scenario and
+        carrying the fixture so its per-role overrides apply in
+        :meth:`ScenarioBuilder.get_agents`.
+        """
+        target = path if path is not None else fixtures.fixture_path(identifier, directory)
+        fixture = fixtures.load_fixture(target)
+        self.shared_goal = fixture.shared_goal
+        self.shared_context = fixture.shared_context
+        return ScenarioBuilder(self, _lookup_scenario(fixture.scenario), fixture=fixture)
 
     # -- loader -----------------------------------------------------------
     def get_agent_loader(self, path: str | None = None) -> ConfigLoader:
