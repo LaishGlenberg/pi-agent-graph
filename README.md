@@ -190,7 +190,12 @@ matches `ScenarioFixture.to_dict()`:
 ```
 
 Fixture problems raise `FixtureFormatError` (bad fields, unknown role) or
-`FixtureNotFoundError` (missing file), both under `FixtureError`.
+`FixtureNotFoundError` (missing file), both under `FixtureError`. A fixture
+`identifier` must be a non-empty string with no path separators (`.`, `..`
+included). A fixture role's `config` is resolved through
+`builder.get_agent_loader()` (injected or lazily created), so
+`load_saved(...).get_agents()` returns ready-to-start agents without extra
+setup.
 
 ## Platform support
 

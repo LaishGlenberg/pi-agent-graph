@@ -8,8 +8,9 @@ from pi_agent_graph.builder import AgentGraphBuilder, ScenarioBuilder
 from pi_agent_graph.errors import (
     FixtureFormatError,
     FixtureNotFoundError,
+    ScenarioNotFoundError,
 )
-from pi_agent_graph.fixtures import RoleFixture, ScenarioFixture
+from pi_agent_graph.fixtures import RoleFixture, ScenarioFixture, save_fixture
 from pi_agent_graph.models import Role, Scenario
 
 
@@ -140,3 +141,67 @@ def test_load_saved_missing_file_raises(tmp_path):
     builder = AgentGraphBuilder()
     with pytest.raises(FixtureNotFoundError):
         builder.load_saved("nope", directory=tmp_path)
+
+
+# -- eager validation / error types ---------------------------------------
+def test_load_saved_unknown_scenario_raises(tmp_path):
+    save_fixture(
+        ScenarioFixture(identifier="demo", scenario="nope"), tmp_path / "demo.json"
+    )
+    with pytest.raises(ScenarioNotFoundError):
+        AgentGraphBuilder().load_saved("demo", directory=tmp_path)
+
+
+def test_load_saved_validates_roles_eagerly(tmp_path):
+    save_fixture(
+        ScenarioFixture(
+            identifier="demo",
+            scenario="checklist_iteration",
+            roles={"nope": RoleFixture(config="cfg")},
+        ),
+        tmp_path / "demo.json",
+    )
+    with pytest.raises(FixtureFormatError):
+        AgentGraphBuilder().load_saved("demo", directory=tmp_path)
+
+
+# -- save path override ----------------------------------------------------
+def test_save_fixture_path_overrides_directory(tmp_path):
+    explicit = tmp_path / "explicit" / "demo.json"
+    path = AgentGraphBuilder().save_fixture(
+        "demo",
+        "checklist_iteration",
+        path=explicit,
+        directory=tmp_path / "ignored",
+    )
+    assert path == explicit
+    assert explicit.exists()
+
+
+# -- loader routing --------------------------------------------------------
+def test_get_agents_routes_config_through_builder_loader(monkeypatch):
+    stub = StubLoader(
+        {"scenario_cfg": ["pi", "scen"], "fixture_cfg": ["pi", "fixture"]}
+    )
+    builder = AgentGraphBuilder()
+    calls: list[object] = []
+
+    def fake_get_agent_loader(path=None):
+        calls.append(path)
+        return stub
+
+    monkeypatch.setattr(builder, "get_agent_loader", fake_get_agent_loader)
+    fixture = ScenarioFixture(
+        identifier="x",
+        scenario="custom",
+        roles={"lead": RoleFixture(config="fixture_cfg")},
+    )
+    scenario_builder = ScenarioBuilder(
+        builder, _custom_scenario_with_config(), fixture=fixture
+    )
+    by_role = {a.role: a for a in scenario_builder.get_agents()}
+    # Fixture config wins for lead; helper falls back to the scenario config —
+    # both resolved via the builder's loader.
+    assert by_role["lead"].base_argv == ["pi", "fixture"]
+    assert by_role["helper"].base_argv == ["pi", "scen"]
+    assert calls

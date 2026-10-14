@@ -77,6 +77,18 @@ class ScenarioBuilder:
                     f"not in scenario {self.scenario.key!r}"
                 )
 
+    def _fixture_role(self, name: str) -> fixtures.RoleFixture | None:
+        if self.fixture is None:
+            return None
+        return self.fixture.roles.get(name)
+
+    def _resolve_config(self, name: str, role: Role) -> str | None:
+        """The config to resolve for *name*; a fixture role wins over the scenario."""
+        fixture_role = self._fixture_role(name)
+        if fixture_role is not None and fixture_role.config:
+            return fixture_role.config
+        return role.config
+
     def get_agents(self) -> list[Agent]:
         self._validate_fixture()
         agents: list[Agent] = []
@@ -89,20 +101,19 @@ class ScenarioBuilder:
                 builder.shared_context,
             )
             agent = Agent(role=name, system_prompt=system_prompt)
-            loader = builder._loader
-            if role.config and loader is not None:
-                agent.set_command(loader.get(role.config))
-            # Fixture wins over scenario defaults when present for this role.
-            if self.fixture is not None:
-                fixture_role = self.fixture.roles.get(name)
-                if fixture_role is not None:
-                    if fixture_role.config:
-                        fixture_loader = builder.get_agent_loader()
-                        agent.set_command(fixture_loader.get(fixture_role.config))
-                    if fixture_role.name:
-                        agent.set_name(fixture_role.name)
-                    if fixture_role.prompt:
-                        agent.set_prompt(fixture_role.prompt)
+            # Configs always resolve through the builder's loader (lazily
+            # created when none was injected), so scenario and fixture roles
+            # resolve identically instead of only fixtures auto-loading.
+            config = self._resolve_config(name, role)
+            if config:
+                agent.set_command(builder.get_agent_loader().get(config))
+            # Fixture name/prompt win over anything the config set.
+            fixture_role = self._fixture_role(name)
+            if fixture_role is not None:
+                if fixture_role.name:
+                    agent.set_name(fixture_role.name)
+                if fixture_role.prompt:
+                    agent.set_prompt(fixture_role.prompt)
             agents.append(agent)
         return agents
 
@@ -161,7 +172,7 @@ class AgentGraphBuilder:
 
         ``roles`` maps a role name to a pi-cli command name; ``prompts`` and
         ``names`` optionally map a role name to a starting prompt / display
-        name. ``shared_goal`` / ``shared_context`` default to the builder's
+        name. The fixture's shared goal/context are taken from the builder's
         current values.
         """
         scenario_obj = _lookup_scenario(scenario)
@@ -205,7 +216,13 @@ class AgentGraphBuilder:
         fixture = fixtures.load_fixture(target)
         self.shared_goal = fixture.shared_goal
         self.shared_context = fixture.shared_context
-        return ScenarioBuilder(self, _lookup_scenario(fixture.scenario), fixture=fixture)
+        scenario_builder = ScenarioBuilder(
+            self, _lookup_scenario(fixture.scenario), fixture=fixture
+        )
+        # Validate role keys eagerly so a bad fixture fails at load time, not
+        # later when agents are materialized.
+        scenario_builder._validate_fixture()
+        return scenario_builder
 
     # -- loader -----------------------------------------------------------
     def get_agent_loader(self, path: str | None = None) -> ConfigLoader:

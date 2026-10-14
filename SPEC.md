@@ -459,8 +459,9 @@ class ScenarioBuilder:
 ```
 
 `get_agents()` renders the system prompt for every role. If a `Role.config` is
-set and the builder has a `ConfigLoader`, it also resolves that config into
-`base_argv`; otherwise the caller sets it with `loader.get(...)` +
+set — or a fixture role supplies one — it resolves that config into `base_argv`
+via `builder.get_agent_loader()`, which uses an injected loader or lazily
+creates the default one. Otherwise the caller sets it with `loader.get(...)` +
 `agent.set_command(...)`.
 
 `start()` is a thin wrapper: it calls `launch(agents, backend=..., options=...)`
@@ -473,23 +474,28 @@ after setting each agent's system prompt (already applied in `get_agents`).
 A `ScenarioFixture` serializes a scenario's tunable pieces behind a stable
 `identifier`: `scenario` (the scenario key), `shared_goal`, `shared_context`,
 and a `roles` mapping of role name to a `RoleFixture` (`config` = pi-cli command
-name, `prompt` = starting prompt, `name` = display name). `identifier` and
-`scenario` must be non-empty; `to_dict()` / `from_dict()` round-trip the
-fixture, and `from_dict()` raises `FixtureFormatError` on invalid input.
+name, `prompt` = starting prompt, `name` = display name). `identifier` must be a
+non-empty string with no path separators (including `.` / `..`), and `scenario`
+must be non-empty. `to_dict()` / `from_dict()` round-trip the fixture;
+`from_dict()` type-checks the fields and raises `FixtureFormatError` on invalid
+input.
 
 Module functions: `save_fixture(fixture, path)` and `load_fixture(path)` read and
 write JSON (`FixtureNotFoundError` when the file is missing,
-`FixtureFormatError` on bad JSON/schema). `fixture_path(identifier,
-directory=None)` returns `<directory or "fixtures">/<identifier>.json`.
+`FixtureFormatError` on bad JSON/schema, `FixtureError` on other I/O failures).
+`fixture_path(identifier, directory=None)` returns
+`<directory or "fixtures">/<identifier>.json`.
 
 `AgentGraphBuilder.save_fixture(...)` builds a `ScenarioFixture` from the
 builder's current shared goal/context plus the `roles` / `prompts` / `names`
 mappings (role keys validated against the scenario) and writes it, returning the
 path. `AgentGraphBuilder.load_saved(...)` loads a fixture, backfills the
 builder's `shared_goal` / `shared_context`, and returns a `ScenarioBuilder`
-carrying the fixture. In `get_agents()`, a fixture's per-role `config`, `name`,
-and `prompt` override the scenario defaults (fixture wins); a fixture role key
-not present in the scenario raises `FixtureFormatError`.
+carrying the fixture; role keys are validated eagerly. In `get_agents()`, a
+fixture's per-role `config`, `name`, and `prompt` override the scenario defaults
+(fixture wins); a fixture role key not present in the scenario raises
+`FixtureFormatError`, and a fixture `scenario` key that is not registered raises
+`ScenarioNotFoundError`.
 
 ## 13. Error taxonomy
 

@@ -13,9 +13,41 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .errors import FixtureFormatError, FixtureNotFoundError
+from .errors import FixtureError, FixtureFormatError, FixtureNotFoundError
 
 DEFAULT_FIXTURE_DIR = Path("fixtures")
+
+
+def validate_identifier(identifier: object) -> str:
+    """Return *identifier* if it is a safe, non-empty file stem.
+
+    Rejects non-strings, blank strings, and anything containing a path
+    separator (so a fixture identifier can never escape its directory).
+    """
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise FixtureFormatError("fixture 'identifier' must be a non-empty string")
+    if any(sep in identifier for sep in ("/", "\\")) or identifier in (".", ".."):
+        raise FixtureFormatError(
+            f"fixture identifier {identifier!r} must not contain path separators"
+        )
+    return identifier
+
+
+def _optional_str(value: object, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise FixtureFormatError(f"{label} must be a string or null")
+    return value
+
+
+def _text_field(data: dict, key: str) -> str:
+    value = data.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise FixtureFormatError(f"fixture {key!r} must be a string")
+    return value
 
 
 @dataclass
@@ -39,9 +71,9 @@ class RoleFixture:
         if not isinstance(data, dict):
             raise FixtureFormatError("role fixture must be a mapping")
         return cls(
-            config=data.get("config"),
-            prompt=data.get("prompt"),
-            name=data.get("name"),
+            config=_optional_str(data.get("config"), "role fixture 'config'"),
+            prompt=_optional_str(data.get("prompt"), "role fixture 'prompt'"),
+            name=_optional_str(data.get("name"), "role fixture 'name'"),
         )
 
 
@@ -56,9 +88,8 @@ class ScenarioFixture:
     roles: dict[str, RoleFixture] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if not self.identifier or not str(self.identifier).strip():
-            raise FixtureFormatError("fixture 'identifier' must be a non-empty string")
-        if not self.scenario or not str(self.scenario).strip():
+        self.identifier = validate_identifier(self.identifier)
+        if not isinstance(self.scenario, str) or not self.scenario.strip():
             raise FixtureFormatError("fixture 'scenario' must be a non-empty string")
 
     def to_dict(self) -> dict:
@@ -74,21 +105,15 @@ class ScenarioFixture:
     def from_dict(cls, data: dict) -> ScenarioFixture:
         if not isinstance(data, dict):
             raise FixtureFormatError("fixture must be a mapping")
-        identifier = data.get("identifier")
-        if not identifier or not str(identifier).strip():
-            raise FixtureFormatError("fixture is missing a non-empty 'identifier'")
-        scenario = data.get("scenario")
-        if not scenario or not str(scenario).strip():
-            raise FixtureFormatError("fixture is missing a non-empty 'scenario'")
         raw_roles = data.get("roles") or {}
         if not isinstance(raw_roles, dict):
             raise FixtureFormatError("fixture 'roles' must be a mapping")
         roles = {key: RoleFixture.from_dict(value) for key, value in raw_roles.items()}
         return cls(
-            identifier=identifier,
-            scenario=scenario,
-            shared_goal=data.get("shared_goal", ""),
-            shared_context=data.get("shared_context", ""),
+            identifier=data.get("identifier"),
+            scenario=data.get("scenario"),
+            shared_goal=_text_field(data, "shared_goal"),
+            shared_context=_text_field(data, "shared_context"),
             roles=roles,
         )
 
@@ -96,30 +121,41 @@ class ScenarioFixture:
 def fixture_path(identifier: str, directory: str | Path | None = None) -> Path:
     """Return ``<directory or 'fixtures'>/<identifier>.json``."""
     base = Path(directory) if directory is not None else DEFAULT_FIXTURE_DIR
-    return base / f"{identifier}.json"
+    return base / f"{validate_identifier(identifier)}.json"
 
 
 def save_fixture(fixture: ScenarioFixture, path: str | Path) -> Path:
-    """Serialize *fixture* to JSON at *path*, creating parents as needed."""
+    """Serialize *fixture* to JSON at *path*, creating parents as needed.
+
+    Raises :class:`FixtureError` if the file cannot be written.
+    """
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(fixture.to_dict(), indent=2) + "\n", encoding="utf-8"
-    )
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(fixture.to_dict(), indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        raise FixtureError(f"could not write fixture {target}: {exc}") from exc
     return target
 
 
 def load_fixture(path: str | Path) -> ScenarioFixture:
     """Load a :class:`ScenarioFixture` from JSON at *path*.
 
-    Raises :class:`FixtureNotFoundError` when the file is missing and
-    :class:`FixtureFormatError` on invalid JSON or schema.
+    Raises :class:`FixtureNotFoundError` when the file is missing,
+    :class:`FixtureFormatError` on invalid JSON or schema, and
+    :class:`FixtureError` on other I/O failures.
     """
     source = Path(path)
     if not source.exists():
         raise FixtureNotFoundError(f"fixture file not found: {source}")
     try:
-        data = json.loads(source.read_text(encoding="utf-8"))
+        text = source.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise FixtureError(f"could not read fixture {source}: {exc}") from exc
+    try:
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise FixtureFormatError(f"fixture is not valid JSON: {source}: {exc}") from exc
     return ScenarioFixture.from_dict(data)

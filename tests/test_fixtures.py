@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from pi_agent_graph.errors import FixtureFormatError, FixtureNotFoundError
+from pi_agent_graph.errors import (
+    FixtureError,
+    FixtureFormatError,
+    FixtureNotFoundError,
+)
 from pi_agent_graph.fixtures import (
     RoleFixture,
     ScenarioFixture,
@@ -45,6 +50,23 @@ def test_scenario_must_be_non_empty():
         ScenarioFixture(identifier="demo", scenario="")
 
 
+# -- identifier safety -----------------------------------------------------
+@pytest.mark.parametrize("bad", ["../evil", "a/b", "a\\b", ".", ".."])
+def test_unsafe_identifier_rejected(bad):
+    with pytest.raises(FixtureFormatError):
+        ScenarioFixture(identifier=bad, scenario="code")
+
+
+def test_identifier_must_be_string():
+    with pytest.raises(FixtureFormatError):
+        ScenarioFixture(identifier=123, scenario="code")
+
+
+def test_fixture_path_rejects_unsafe_identifier():
+    with pytest.raises(FixtureFormatError):
+        fixture_path("../evil")
+
+
 # -- to_dict / from_dict round trip ----------------------------------------
 def test_to_dict_from_dict_round_trip():
     fixture = _make_fixture()
@@ -75,6 +97,27 @@ def test_from_dict_defaults():
     assert restored.shared_goal == ""
     assert restored.shared_context == ""
     assert restored.roles == {}
+
+
+def test_from_dict_non_mapping_role_value():
+    with pytest.raises(FixtureFormatError):
+        ScenarioFixture.from_dict(
+            {"identifier": "d", "scenario": "code", "roles": {"planner": "nope"}}
+        )
+
+
+def test_from_dict_non_string_role_field():
+    with pytest.raises(FixtureFormatError):
+        ScenarioFixture.from_dict(
+            {"identifier": "d", "scenario": "code", "roles": {"planner": {"config": 5}}}
+        )
+
+
+def test_from_dict_non_string_shared_goal():
+    with pytest.raises(FixtureFormatError):
+        ScenarioFixture.from_dict(
+            {"identifier": "d", "scenario": "code", "shared_goal": 5}
+        )
 
 
 # -- save / load -----------------------------------------------------------
@@ -110,6 +153,27 @@ def test_load_missing_fields_raises(tmp_path):
     path.write_text(json.dumps({"identifier": "demo"}), encoding="utf-8")
     with pytest.raises(FixtureFormatError):
         load_fixture(path)
+
+
+def test_load_fixture_wraps_os_error(tmp_path, monkeypatch):
+    path = tmp_path / "demo.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def boom(*args, **kwargs):
+        raise OSError("nope")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    with pytest.raises(FixtureError):
+        load_fixture(path)
+
+
+def test_save_fixture_wraps_os_error(tmp_path, monkeypatch):
+    def boom(*args, **kwargs):
+        raise OSError("nope")
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    with pytest.raises(FixtureError):
+        save_fixture(_make_fixture(), tmp_path / "demo.json")
 
 
 # -- fixture_path ----------------------------------------------------------
