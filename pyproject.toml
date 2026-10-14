@@ -1,0 +1,25 @@
+[project]
+name = "pi-agent-graph"
+version = "0.1.0"
+description = "Build and launch multi-agent pi workflows"
+readme = "README.md"
+authors = [
+    { name = "LaishGlenberg", email = "lglenbe1@asu.edu" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+pi-agent-graph = "pi_agent_graph:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
