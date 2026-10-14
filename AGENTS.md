@@ -11,10 +11,15 @@ uv sync                       # install runtime + dev dependencies
 uv run pytest                 # full test suite
 uv run pytest tests/test_models.py -q
 uv run pytest -k ordering     # subset by name
+uv run ruff check .           # lint
+uv run ruff format --check .  # formatting check
+uv run mypy                   # static type check (strict, src/)
 uv run pi-agent-graph         # console entry point (prints help in v1)
 ```
 
-There is no linter or type-checker configured; do not add one without asking.
+Ruff (lint + format) and mypy (strict, `src/`) are configured; CI runs both plus
+the test suite. `*.md` is excluded from Ruff so code blocks in the docs are not
+reformatted.
 
 ## Layout
 
@@ -24,6 +29,7 @@ src/pi_agent_graph/
   models.py        Agent, Role, Scenario; managed-flag extraction
   quoting.py       POSIX / Windows / AppleScript quoting
   loader.py        ConfigLoader: pi-cli config discovery + --dry-run resolution
+  fixtures.py      ScenarioFixture / RoleFixture; JSON save/load
   scenarios.py     Built-in scenario registry (code, not files)
   builder.py       AgentGraphBuilder + ScenarioBuilder
   cli.py           Reserved console entry point (help only)
