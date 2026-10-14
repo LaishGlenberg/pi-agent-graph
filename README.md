@@ -134,6 +134,64 @@ Scenarios are defined in code (`scenarios.py`) and are meant to be extended.
 Each role has a seed description that is combined with your shared goal and
 shared context into the agent's system prompt.
 
+## Fixtures
+
+A fixture captures a scenario's tunable pieces — the shared context, the shared
+goal, and each role's pi-cli command name and starting prompt — behind a stable
+`identifier`, so it can be saved to disk and reloaded without re-entering the
+fields by hand.
+
+```python
+from pi_agent_graph import AgentGraphBuilder
+
+builder = AgentGraphBuilder()
+
+# Load a saved fixture by identifier; this backfills the builder's shared
+# goal/context and returns a ScenarioBuilder carrying the fixture.
+scenario = builder.load_saved(
+    "checklist_iteration_demo", directory="examples/fixtures"
+)
+planner, worker = scenario.get_agents()  # fixture configs resolved via pi-cli
+
+builder.start([planner, worker], cwd=".")
+```
+
+`ScenarioFixture` holds the `identifier`, the `scenario` key, `shared_goal`,
+`shared_context`, and a `roles` mapping of role name to a `RoleFixture` (`config`
+= pi-cli command name, `prompt` = starting prompt, `name` = display name). Save
+the current builder state as a fixture with `builder.save_fixture(...)`:
+
+```python
+builder.set_shared_goal("Design a React feature.")
+path = builder.save_fixture(
+    "my_demo",
+    "checklist_iteration",
+    roles={"planner": "plannerv2", "worker": "workerv3"},
+    prompts={"planner": "Draft the plan."},
+    directory="fixtures",  # default directory is "fixtures"
+)
+```
+
+`fixture_path(identifier, directory=None)` returns
+`<directory or "fixtures">/<identifier>.json`. A saved fixture is plain JSON that
+matches `ScenarioFixture.to_dict()`:
+
+```json
+{
+  "identifier": "checklist_iteration_demo",
+  "scenario": "checklist_iteration",
+  "shared_goal": "Design a React feature.",
+  "shared_context": "Use pi-intercom to message other agents.",
+  "roles": {
+    "planner": {"config": "plannerv2", "prompt": "Draft the plan.", "name": null},
+    "worker": {"config": "workerv3", "prompt": null, "name": null}
+  }
+}
+```
+
+Fixture problems raise `FixtureFormatError` (bad fields, unknown role) or
+`FixtureNotFoundError` (missing file), both under `FixtureError`.
+
 ## Platform support
 
 `pi-agent-graph` targets Windows, macOS, and Linux.

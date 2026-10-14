@@ -66,6 +66,7 @@ Package layout (`src/pi_agent_graph/`):
 __init__.py          Public exports
 models.py            Agent, Role, Scenario
 loader.py            ConfigLoader (pi-cli config discovery + resolution)
+fixtures.py          ScenarioFixture / RoleFixture, save/load, fixture_path
 scenarios.py         Built-in scenario registry
 quoting.py           POSIX / Windows / AppleScript quoting helpers
 launchers/
@@ -85,13 +86,15 @@ Public API (re-exported from `__init__.py`):
 ```python
 Agent, Role, Scenario
 ConfigLoader
+ScenarioFixture, RoleFixture
 AgentGraphBuilder
 launch, LaunchOptions, LaunchResult
 ```
 
 **Layering:** `models` and `quoting` depend on nothing internal. `loader` and
-`scenarios` depend on `models`. `launchers` depend on `models` + `quoting`.
-`builder` ties them together. `cli` sits on top of `builder`.
+`scenarios` depend on `models`. `fixtures` depends on `errors` only. `launchers`
+depend on `models` + `quoting`. `builder` ties them together. `cli` sits on top
+of `builder`.
 
 ## 5. Data model (`models.py`)
 
@@ -425,6 +428,16 @@ class AgentGraphBuilder:
     def list_scenarios(self) -> list[str]: ...
     def get_scenario(self, key: str) -> ScenarioBuilder: ...
 
+    def save_fixture(self, identifier: str, scenario: str, *,
+                     roles: dict[str, str] | None = None,
+                     prompts: dict[str, str] | None = None,
+                     names: dict[str, str] | None = None,
+                     directory: str | Path | None = None,
+                     path: str | Path | None = None) -> Path: ...
+    def load_saved(self, identifier: str, *,
+                   directory: str | Path | None = None,
+                   path: str | Path | None = None) -> ScenarioBuilder: ...
+
     def get_agent_loader(self, path: str | None = None) -> ConfigLoader: ...
     def start(self, agents: list[Agent], *, backend="terminal",
               options: LaunchOptions | None = None,
@@ -455,6 +468,29 @@ after setting each agent's system prompt (already applied in `get_agents`).
 
 `save_bash()` calls `launch(..., backend="bash", options=LaunchOptions(bash_path=path))`.
 
+### 12.1 Fixtures (`fixtures.py`)
+
+A `ScenarioFixture` serializes a scenario's tunable pieces behind a stable
+`identifier`: `scenario` (the scenario key), `shared_goal`, `shared_context`,
+and a `roles` mapping of role name to a `RoleFixture` (`config` = pi-cli command
+name, `prompt` = starting prompt, `name` = display name). `identifier` and
+`scenario` must be non-empty; `to_dict()` / `from_dict()` round-trip the
+fixture, and `from_dict()` raises `FixtureFormatError` on invalid input.
+
+Module functions: `save_fixture(fixture, path)` and `load_fixture(path)` read and
+write JSON (`FixtureNotFoundError` when the file is missing,
+`FixtureFormatError` on bad JSON/schema). `fixture_path(identifier,
+directory=None)` returns `<directory or "fixtures">/<identifier>.json`.
+
+`AgentGraphBuilder.save_fixture(...)` builds a `ScenarioFixture` from the
+builder's current shared goal/context plus the `roles` / `prompts` / `names`
+mappings (role keys validated against the scenario) and writes it, returning the
+path. `AgentGraphBuilder.load_saved(...)` loads a fixture, backfills the
+builder's `shared_goal` / `shared_context`, and returns a `ScenarioBuilder`
+carrying the fixture. In `get_agents()`, a fixture's per-role `config`, `name`,
+and `prompt` override the scenario defaults (fixture wins); a fixture role key
+not present in the scenario raises `FixtureFormatError`.
+
 ## 13. Error taxonomy
 
 ```
@@ -465,7 +501,10 @@ PiAgentGraphError
 ├── SavedConfigNotFoundError
 ├── ScenarioNotFoundError
 ├── ValidationError
-└── LaunchError
+├── LaunchError
+└── FixtureError
+    ├── FixtureFormatError
+    └── FixtureNotFoundError
 ```
 
 ## 14. CLI (reserved)
