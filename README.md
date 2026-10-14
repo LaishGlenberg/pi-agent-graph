@@ -60,23 +60,16 @@ uv run pi-agent-graph   # console entry point (prints help in v1)
 
 ## Manual end-to-end run
 
-`examples/checklist_iteration.py` builds a planner + worker from saved `pi-cli`
-configs, previews the exact commands, and (optionally) opens real terminals:
+`examples/checklist_iteration.py` is a complete usage example: it loads two
+saved `pi-cli` configs, builds the `checklist_iteration` agents, and opens a
+terminal window for each (worker first, planner last).
 
 ```bash
-# Preview only - no windows opened
 uv run python examples/checklist_iteration.py
-
-# Open two terminal windows: worker first, then the planner
-uv run python examples/checklist_iteration.py --launch
-
-# Write a reproducible launch script instead of launching
-uv run python examples/checklist_iteration.py --save flows/checklist.cmd
 ```
 
-It defaults to the saved configs `planner` and `worker`. If you do not have a
-`planner` config yet, pass `--planner-config worker` (or save one with
-`pi-cli ... -S planner`).
+It uses the saved configs `plannerv2` and `workerv3`; change those two lines to
+match your own.
 
 ## Quickstart
 
@@ -104,6 +97,9 @@ planner.set_prompt(
     "Draft the plan, choose libraries and components, "
     "then create the checklist and hand off to the worker."
 )
+
+# Preview exactly what will run, without opening anything.
+builder.start_dry([planner, worker])
 
 # The worker (no prompt) launches first; the planner launches last.
 result = builder.start([planner, worker])

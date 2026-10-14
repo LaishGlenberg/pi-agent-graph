@@ -121,6 +121,29 @@ def test_start_with_print_backend():
     assert len(result.commands) == 2
 
 
+def test_start_dry_prints_without_launching(capsys):
+    builder = AgentGraphBuilder()
+    agents = builder.get_scenario("checklist_iteration").get_agents()
+    for agent in agents:
+        agent.set_command(["pi", "-ne"])
+    result = builder.start_dry(agents)
+    out = capsys.readouterr().out
+    assert result.backend == "print"
+    assert result.pids == [None, None]
+    assert "worker" in out
+    assert "planner" in out
+
+
+def test_start_dry_orders_initiator_last(capsys):
+    builder = AgentGraphBuilder()
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    planner.set_command(["pi", "-ne"])
+    worker.set_command(["pi", "-ne"])
+    planner.set_prompt("go")
+    result = builder.start_dry([planner, worker])
+    assert [agent.role for agent in result.agents] == ["worker", "planner"]
+
+
 def test_save_bash(tmp_path):
     builder = AgentGraphBuilder()
     agents = builder.get_scenario("subagent_scouting").get_agents()

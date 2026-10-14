@@ -114,6 +114,12 @@ class AgentGraphBuilder:
     ) -> LaunchResult:
         return launch(agents, backend=backend, options=options)
 
+    def start_dry(
+        self, agents: list[Agent], *, options: LaunchOptions | None = None
+    ) -> LaunchResult:
+        """Print the commands :meth:`start` would run, without launching."""
+        return launch(agents, backend="print", options=options)
+
     def save_bash(self, agents: list[Agent], path: str) -> str:
         result = launch(
             agents,
