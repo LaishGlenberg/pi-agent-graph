@@ -62,8 +62,16 @@ def test_set_command_trailing_flag_without_value_is_dropped():
 
 def test_set_command_keeps_unmanaged_flags_in_order():
     agent = Agent(role="worker")
-    agent.set_command(["pi", "-ne", "--model", "x", "--thinking", "off"])
-    assert agent.base_argv == ["pi", "-ne", "--model", "x", "--thinking", "off"]
+    agent.set_command(["pi", "-ne", "--provider", "x", "--thinking", "off"])
+    assert agent.base_argv == ["pi", "-ne", "--provider", "x", "--thinking", "off"]
+
+
+def test_set_command_extracts_model():
+    agent = Agent(role="worker")
+    agent.set_command(["pi", "-ne", "--model", "opencode-go/mimo-v2.5:low"])
+    assert agent.model == "opencode-go/mimo-v2.5:low"
+    assert agent.model_explicit is False
+    assert agent.base_argv == ["pi", "-ne"]
 
 
 # -- system prompt replaces, never appends ---------------------------------
@@ -138,17 +146,106 @@ def test_build_argv_omits_empty_system_prompt():
     assert agent.build_argv() == ["pi", "--name", "r"]
 
 
+# -- model selection -------------------------------------------------------
+def test_set_model_without_thinking():
+    agent = Agent(role="r")
+    agent.set_model("opencode-go/mimo-v2.5")
+    assert agent.model == "opencode-go/mimo-v2.5"
+    assert agent.model_explicit is True
+    assert agent.build_argv()[-2:] == ["--model", "opencode-go/mimo-v2.5"]
+
+
+def test_set_model_with_thinking_appends_suffix():
+    agent = Agent(role="r")
+    agent.set_model("opencode-go/mimo-v2.5", "low")
+    assert agent.model == "opencode-go/mimo-v2.5:low"
+
+
+def test_set_model_replaces_existing_thinking_suffix():
+    agent = Agent(role="r")
+    agent.set_model("m:high", "low")
+    assert agent.model == "m:low"
+
+
+def test_set_model_keeps_colon_model_without_known_suffix():
+    agent = Agent(role="r")
+    agent.set_model("provider/weird:name", "high")
+    assert agent.model == "provider/weird:name:high"
+
+
+def test_set_model_strips_bare_thinking_flag():
+    agent = Agent(role="r", base_argv=["pi", "--thinking", "high"])
+    agent.set_model("m", "low")
+    assert agent.base_argv == ["pi"]
+    assert agent.model == "m:low"
+    assert "--thinking" not in agent.build_argv()
+
+
+def test_set_model_overrides_config_model():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "--model", "config"])
+    agent.set_model("python", "high")
+    argv = agent.build_argv()
+    assert argv.count("--model") == 1
+    assert argv[argv.index("--model") + 1] == "python:high"
+
+
+def test_set_model_then_set_command_config_model_wins_but_is_not_explicit():
+    agent = Agent(role="r")
+    agent.set_model("python")
+    agent.set_command(["pi", "--model", "config"])
+    assert agent.model == "config"
+    assert agent.model_explicit is False
+
+
+def test_direct_model_constructor_is_explicit():
+    assert Agent(role="r", model="m").model_explicit is True
+
+
+def test_set_option_model_routes_to_field_and_marks_explicit():
+    agent = Agent(role="r", base_argv=["pi"])
+    agent.set_option("--model", "m")
+    assert agent.model == "m"
+    assert agent.model_explicit is True
+    assert agent.base_argv == ["pi"]
+
+
+def test_build_argv_model_order():
+    agent = Agent(
+        role="r",
+        base_argv=["pi"],
+        name="n",
+        session_dir="/d",
+        model="m",
+        system_prompt="s",
+        prompt="p",
+    )
+    assert agent.build_argv() == [
+        "pi",
+        "--name",
+        "n",
+        "--session-dir",
+        "/d",
+        "--model",
+        "m",
+        "--system-prompt",
+        "s",
+        "--",
+        "p",
+    ]
+
+
 # -- set_option ------------------------------------------------------------
 def test_set_option_replaces_existing_flag():
-    agent = Agent(role="r", base_argv=["pi", "--model", "old", "--thinking", "off"])
-    agent.set_option("--model", "new")
-    assert agent.base_argv == ["pi", "--thinking", "off", "--model", "new"]
+    agent = Agent(role="r", base_argv=["pi", "--provider", "old", "--thinking", "off"])
+    agent.set_option("--provider", "new")
+    assert agent.base_argv == ["pi", "--thinking", "off", "--provider", "new"]
 
 
 def test_set_option_removes_equals_form():
-    agent = Agent(role="r", base_argv=["pi", "--model=old"])
-    agent.set_option("--model", "new")
-    assert agent.base_argv == ["pi", "--model", "new"]
+    agent = Agent(role="r", base_argv=["pi", "--provider=old"])
+    agent.set_option("--provider", "new")
+    assert agent.base_argv == ["pi", "--provider", "new"]
 
 
 def test_set_option_managed_flag_routes_to_field():

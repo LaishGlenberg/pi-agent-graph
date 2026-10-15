@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 
-from . import fixtures
+from . import diagnostics, fixtures
 from .errors import FixtureFormatError
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
@@ -93,19 +94,24 @@ class ScenarioBuilder:
         agents: list[Agent] = []
         builder = self.builder
         for name, role in self.scenario.roles.items():
-            system_prompt = render_system_prompt(
-                role,
-                self.scenario.description,
-                builder.shared_goal,
-                builder.shared_context,
-            )
-            agent = Agent(role=name, system_prompt=system_prompt)
+            agent = Agent(role=name)
             # Configs always resolve through the builder's loader (lazily
             # created when none was injected), so scenario and fixture roles
             # resolve identically instead of only fixtures auto-loading.
             config = self._resolve_config(name, role)
             if config:
                 agent.set_command(builder.get_agent_loader().get(config))
+            # Our rendered system prompt always wins: it replaces any prompt
+            # the saved command carried, because building a dynamic prompt is
+            # the whole point of this library.
+            agent.set_system_prompt(
+                render_system_prompt(
+                    role,
+                    self.scenario.description,
+                    builder.shared_goal,
+                    builder.shared_context,
+                )
+            )
             # Fixture name/prompt win over anything the config set.
             fixture_role = self._fixture_role(name)
             if fixture_role is not None:
@@ -113,6 +119,9 @@ class ScenarioBuilder:
                     agent.set_name(fixture_role.name)
                 if fixture_role.prompt:
                     agent.set_prompt(fixture_role.prompt)
+            # A builder-level default fills only agents that did not choose a
+            # model in Python; a config model is overridden by it.
+            builder._fill_default_model(agent)
             agents.append(agent)
         return agents
 
@@ -130,6 +139,8 @@ class AgentGraphBuilder:
         self._loader = loader
         self.shared_goal = ""
         self.shared_context = ""
+        self.default_model: str | None = None
+        self.default_thinking: str | None = None
 
     # -- shared prompt context -------------------------------------------
     def set_shared_goal(self, text: str) -> None:
@@ -137,6 +148,24 @@ class AgentGraphBuilder:
 
     def set_shared_context(self, text: str) -> None:
         self.shared_context = text
+
+    def set_model(self, model: str, thinking: str | None = None) -> None:
+        """Set a default model for every agent that has not chosen one.
+
+        Precedence: a per-agent :meth:`Agent.set_model` wins over this default,
+        which in turn overrides a model carried by the saved pi-cli command.
+        ``thinking`` is appended as pi's ``model:thinking`` suffix.
+        """
+        self.default_model = model
+        self.default_thinking = thinking
+
+    def _fill_default_model(self, agent: Agent) -> None:
+        if self.default_model is not None and not agent.model_explicit:
+            agent.set_model(self.default_model, self.default_thinking)
+
+    def _fill_default_models(self, agents: Iterable[Agent]) -> None:
+        for agent in agents:
+            self._fill_default_model(agent)
 
     def render_system_prompt(self, role: Role, scenario_description: str = "") -> str:
         return render_system_prompt(
@@ -244,8 +273,11 @@ class AgentGraphBuilder:
 
         ``cwd`` applies to every agent that does not already have its own
         working directory set (see :meth:`Agent.set_cwd`), so per-agent values
-        win.
+        win. Agents with no model fall back to pi's default and are warned
+        about before launch.
         """
+        self._fill_default_models(agents)
+        diagnostics.emit_warnings(diagnostics.collect_warnings(agents))
         return launch(
             agents,
             backend=backend,
@@ -260,6 +292,7 @@ class AgentGraphBuilder:
         cwd: str | None = None,
     ) -> LaunchResult:
         """Print the commands :meth:`start` would run, without launching."""
+        self._fill_default_models(agents)
         return launch(
             agents,
             backend="print",
@@ -269,6 +302,7 @@ class AgentGraphBuilder:
     def save_bash(
         self, agents: list[Agent], path: str, *, cwd: str | None = None
     ) -> str:
+        self._fill_default_models(agents)
         result = launch(
             agents,
             backend="bash",

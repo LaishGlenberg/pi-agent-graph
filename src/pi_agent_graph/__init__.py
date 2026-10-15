@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from .builder import AgentGraphBuilder, ScenarioBuilder, render_system_prompt
 from .cli import main
+from .diagnostics import (
+    ERROR_CODES,
+    Diagnostic,
+    ErrorCode,
+    WarningCode,
+    collect_warnings,
+    emit_warnings,
+    error_code,
+)
 from .errors import (
     ConfigNotFoundError,
     ConfigParseError,
@@ -32,12 +41,15 @@ from .scenarios import SCENARIOS, get_scenario, scenario_names
 __version__ = "0.1.0"
 
 __all__ = [
+    "ERROR_CODES",
     "SCENARIOS",
     "Agent",
     "AgentGraphBuilder",
     "ConfigLoader",
     "ConfigNotFoundError",
     "ConfigParseError",
+    "Diagnostic",
+    "ErrorCode",
     "FixtureError",
     "FixtureFormatError",
     "FixtureNotFoundError",
@@ -54,7 +66,11 @@ __all__ = [
     "ScenarioFixture",
     "ScenarioNotFoundError",
     "ValidationError",
+    "WarningCode",
     "__version__",
+    "collect_warnings",
+    "emit_warnings",
+    "error_code",
     "fixture_path",
     "get_scenario",
     "launch",

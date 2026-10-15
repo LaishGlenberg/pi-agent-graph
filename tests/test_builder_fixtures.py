@@ -58,10 +58,12 @@ def test_save_and_load_round_trip(tmp_path):
 
     planner = by_role["planner"]
     assert planner.name == "P1"
-    assert planner.base_argv == ["pi", "--model", "fast"]
+    assert planner.base_argv == ["pi"]
+    assert planner.model == "fast"
 
     worker = by_role["worker"]
-    assert worker.base_argv == ["pi", "--model", "thorough"]
+    assert worker.base_argv == ["pi"]
+    assert worker.model == "thorough"
     assert worker.prompt == "Do the thing"
     # Prompt is rendered via build_argv's `--` path, not system_prompt.
     assert worker.system_prompt is not None

@@ -98,6 +98,11 @@ planner.set_prompt(
     "then create the checklist and hand off to the worker."
 )
 
+# Optional: pick a model. A builder-wide default applies to every agent;
+# a per-agent call overrides it. Neither is required (pi's default is used).
+builder.set_model("opencode-go/mimo-v2.5", "low")
+planner.set_model("opencode-go/mimo-v2.5-pro", "high")
+
 # Start every agent in a workspace. Per-agent overrides win, so
 # `planner.set_dir("C:/work/api")` (or `set_cwd`) takes precedence.
 workspace = "C:/Users/lg/projects/my-app"
@@ -120,6 +125,28 @@ from pi_agent_graph import launch
 
 result = launch([planner, worker], backend="print")
 ```
+
+## Model selection
+
+Set a model per agent, or a default for the whole roster. `thinking` is
+appended as pi's `model:thinking` suffix:
+
+```python
+builder.set_model("opencode-go/mimo-v2.5", "low")        # every agent
+planner.set_model("opencode-go/mimo-v2.5-pro", "high")   # planner only
+# -> pi --model opencode-go/mimo-v2.5-pro:high ...
+```
+
+Precedence, lowest to highest:
+
+1. a `--model` carried by the saved pi-cli command;
+2. the builder-wide `set_model(...)` default;
+3. a per-agent `set_model(...)`.
+
+When no model is set at any level, pi uses its own default and `start()` prints
+a yellow warning naming the agents that will fall back. Our rendered system
+prompt always replaces a `--system-prompt` saved in the pi-cli config, because
+building that prompt dynamically is the point of the library.
 
 ## Built-in scenarios
 

@@ -108,28 +108,37 @@ class Agent:
     name: str | None = None                              # --name; defaults to role
     session_dir: str | None = None                       # --session-dir
     system_prompt: str | None = None                     # --system-prompt
+    model: str | None = None                             # --model (optionally model:thinking)
     prompt: str | None = None                            # starting positional prompt
     cwd: str | None = None
+    model_explicit: bool = False                         # model chosen in Python, not from config
 ```
 
-**Managed flags.** `--name`, `--session-dir`, and `--system-prompt` are owned by
-the dataclass fields. They are **never** left inside `base_argv`.
+**Managed flags.** `--name`, `--session-dir`, `--model`, and `--system-prompt`
+are owned by the dataclass fields. They are **never** left inside `base_argv`.
 
 **`set_command(argv: Sequence[str]) -> None`**
 Stores a resolved `pi` command. Before storing, it extracts any managed flags
 into the corresponding fields and removes them from `base_argv`. This makes
-system-prompt injection a *replace*, not an append.
+system-prompt injection a *replace*, not an append, and lets a Python-level
+model override the one the saved command carried. A `--model` lifted out of a
+saved command leaves `model_explicit = False`, so it is still treated as the
+pi-cli default rather than a Python choice.
 
 **Setters** (all mutate and return `None`):
 
 - `set_name(name)`
 - `set_session_dir(path)`
 - `set_system_prompt(text)` — replaces the agent's system prompt
+- `set_model(model, thinking=None)` — sets `--model`; appends pi's
+  `model:thinking` suffix when `thinking` is given (replacing an existing known
+  suffix), and strips a bare `--thinking` so the suffix is authoritative
 - `set_prompt(text)`
 - `set_cwd(path)` — the directory the agent starts in
 - `set_dir(path)` — alias for `set_cwd`
 - `set_option(flag, value)` — replaces `flag` inside `base_argv` if present,
-  else appends; used for arbitrary pass-through flags.
+  else appends; used for arbitrary pass-through flags. Managed flags (including
+  `--model`) route to their field instead.
 
 **`build_argv() -> list[str]`** — pure; always returns a fresh list, never
 mutates. Assembly order:
@@ -138,6 +147,7 @@ mutates. Assembly order:
 base_argv
 + ["--name", name]                 if name
 + ["--session-dir", session_dir]   if session_dir
++ ["--model", model]               if model
 + ["--system-prompt", system_prompt] if system_prompt
 + ["--", prompt]                   if prompt
 ```
@@ -147,6 +157,12 @@ The starting prompt is **always** preceded by `--` so a prompt that begins with
 
 > Rationale: all mutable state lives in fields; `build_argv()` is deterministic,
 > so calling `launch()` twice or re-emitting bash cannot duplicate flags.
+
+**Model precedence.** Lowest to highest: a `--model` carried by the saved
+pi-cli command (`model_explicit = False`) < a builder-wide
+`AgentGraphBuilder.set_model(...)` default < a per-agent
+`Agent.set_model(...)` (`model_explicit = True`). An agent with no model at any
+level runs on pi's default; `AgentGraphBuilder.start()` warns about it.
 
 ### 5.2 `Role`
 
@@ -424,6 +440,7 @@ class AgentGraphBuilder:
 
     def set_shared_goal(self, text: str) -> None: ...
     def set_shared_context(self, text: str) -> None: ...
+    def set_model(self, model: str, thinking: str | None = None) -> None: ...
 
     def list_scenarios(self) -> list[str]: ...
     def get_scenario(self, key: str) -> ScenarioBuilder: ...
@@ -458,14 +475,25 @@ class ScenarioBuilder:
     def get(self, role: str) -> Agent: ...       # single agent by role name
 ```
 
-`get_agents()` renders the system prompt for every role. If a `Role.config` is
-set — or a fixture role supplies one — it resolves that config into `base_argv`
-via `builder.get_agent_loader()`, which uses an injected loader or lazily
-creates the default one. Otherwise the caller sets it with `loader.get(...)` +
-`agent.set_command(...)`.
+`get_agents()` renders the system prompt for every role, always *replacing* any
+`--system-prompt` carried by the resolved config (building a dynamic prompt is
+the point of the library). If a `Role.config` is set — or a fixture role
+supplies one — it resolves that config into `base_argv` via
+`builder.get_agent_loader()`, which uses an injected loader or lazily creates
+the default one. Otherwise the caller sets it with `loader.get(...)` +
+`agent.set_command(...)`. A builder default model fills in any agent that has
+not chosen one (see the model precedence above).
 
-`start()` is a thin wrapper: it calls `launch(agents, backend=..., options=...)`
-after setting each agent's system prompt (already applied in `get_agents`).
+`start()` is a thin wrapper: it fills default models, prints a yellow warning
+for every agent that will fall back to pi's default model, then calls
+`launch(agents, backend=..., options=...)`. `start_dry()` and `save_bash()`
+fill default models too, but do not warn.
+
+```python
+builder.set_model("opencode-go/mimo-v2.5", "low")   # every agent
+planner.set_model("opencode-go/mimo-v2.5-pro", "high")  # one agent
+# -> pi --model opencode-go/mimo-v2.5-pro:high ...
+```
 
 `save_bash()` calls `launch(..., backend="bash", options=LaunchOptions(bash_path=path))`.
 
@@ -513,6 +541,25 @@ PiAgentGraphError
     └── FixtureNotFoundError
 ```
 
+### 13.1 Diagnostics (`diagnostics.py`)
+
+User-facing diagnostics are centralized and enumerated so callers can branch on
+a stable code instead of message text:
+
+- `ErrorCode` — one code per exception class; `ERROR_CODES` maps every error
+  class to its code, and `error_code(exc)` resolves the most specific one by
+  walking the MRO (`UNKNOWN` for non-library exceptions).
+- `WarningCode` — currently `DEFAULT_MODEL`.
+- `Diagnostic` — `{code, message, agent}`, with `.format()` rendering
+  `[code] message`.
+- `collect_warnings(agents)` — one `DEFAULT_MODEL` diagnostic per agent with no
+  model.
+- `emit_warnings(warnings, stream=sys.stderr, color=True)` — prints each warning
+  in yellow (`\033[33m…\033[0m`).
+
+`AgentGraphBuilder.start()` calls `collect_warnings()` + `emit_warnings()` before
+launching. New warnings get a `WarningCode` member and a collector here.
+
 ## 14. CLI (reserved)
 
 `pyproject.toml` defines `pi-agent-graph = "pi_agent_graph:main"`. In v1 `main()`
@@ -523,17 +570,25 @@ only prints help. A real CLI (`list-scenarios`, `dry-run <scenario>`,
 
 Pure unit tests (no e2e terminal launches):
 
-- **models** — `set_command` extracts managed flags; `set_system_prompt`
-  replaces rather than appends; `build_argv()` is pure and stable across calls;
-  `--` is always emitted before the prompt.
+- **models** — `set_command` extracts managed flags (including `--model`);
+  `set_system_prompt` replaces rather than appends; `set_model` builds the
+  `model:thinking` suffix and overrides a config model; `build_argv()` is pure
+  and stable across calls; `--` is always emitted before the prompt.
+- **diagnostics** — error-class coverage, `error_code` MRO resolution, warning
+  collection, and colored emission.
 - **quoting** — POSIX round-trips through `shlex.split`; AppleScript escaping.
 - **loader** — path resolution order; `list()` against a temp config;
-  `get()` against a fake `pi-cli` executable on `PATH` (skip if unavailable);
-  missing-name and missing-binary errors.
+  `get()` against a fake `pi-cli` runner; missing-name and missing-binary errors.
 - **scenarios** — templating output for a known goal/context.
 - **validation** — duplicate names, banned short flags, empty argv each rejected.
 - **ordering** — responders precede initiators; initiators keep passed order.
 - **bash** — generated script contains every agent's command and the header.
+
+`tests/fakes.py` provides two reusable process-boundary fakes used by
+integration-style tests: `FakePiCli` (a real `ConfigLoader` wired to an
+in-memory `pi-cli --dry-run` runner) and `FakeLauncher` (a recording backend
+registered over `print`). They run the full config -> fixture -> agents ->
+launch pipeline without spawning a process.
 
 Integration test against a real `pi-cli` is opt-in and skipped when absent. No
 test opens a real terminal window.

@@ -1,9 +1,10 @@
 """Core data model: :class:`Agent`, :class:`Role`, and :class:`Scenario`.
 
 The key invariant in this module is that an :class:`Agent` owns its managed
-flags (``--name``, ``--session-dir``, ``--system-prompt``) as *fields*, never as
-loose tokens in ``base_argv``. That makes system-prompt injection a replace
-rather than an append, and keeps :meth:`Agent.build_argv` deterministic and
+flags (``--name``, ``--session-dir``, ``--model``, ``--system-prompt``) as
+*fields*, never as loose tokens in ``base_argv``. That makes system-prompt
+injection a replace rather than an append, and lets a Python-level model
+override a config one, while keeping :meth:`Agent.build_argv` deterministic and
 side-effect free.
 """
 
@@ -16,8 +17,21 @@ from dataclasses import dataclass, field
 MANAGED_FLAGS: dict[str, str] = {
     "--name": "name",
     "--session-dir": "session_dir",
+    "--model": "model",
     "--system-prompt": "system_prompt",
 }
+
+#: pi's valid thinking levels. Used to recognize a ``model:thinking`` suffix so
+#: :meth:`Agent.set_model` can replace it instead of stacking a second ``:``.
+THINKING_LEVELS: tuple[str, ...] = (
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
 
 
 def _split_managed(argv: Sequence[str]) -> tuple[dict[str, str], list[str]]:
@@ -85,25 +99,38 @@ class Agent:
     name: str | None = None
     session_dir: str | None = None
     system_prompt: str | None = None
+    model: str | None = None
     prompt: str | None = None
     cwd: str | None = None
+    #: True when the model was chosen in Python (constructor or
+    #: :meth:`set_model`) rather than inherited from the pi-cli config. A
+    #: builder-level default only fills in agents whose model is *not*
+    #: explicit, so per-agent choices always win.
+    model_explicit: bool = False
 
     def __post_init__(self) -> None:
         if self.name is None:
             self.name = self.role
+        if self.model is not None:
+            self.model_explicit = True
 
     # -- command ---------------------------------------------------------
     def set_command(self, argv: Sequence[str]) -> None:
         """Set the resolved ``pi`` command, extracting managed flags.
 
-        Any ``--name`` / ``--session-dir`` / ``--system-prompt`` present in
-        *argv* is lifted into its field; the rest stays in ``base_argv``.
+        Any ``--name`` / ``--session-dir`` / ``--model`` / ``--system-prompt``
+        present in *argv* is lifted into its field; the rest stays in
+        ``base_argv``.
         """
         self.base_argv = list(argv)
         found, remaining = _split_managed(self.base_argv)
         self.base_argv = remaining
         for field_name, value in found.items():
             setattr(self, field_name, value)
+        if "model" in found:
+            # A model carried by the saved command is the pi-cli default, not a
+            # Python-level choice, so it never blocks a builder default.
+            self.model_explicit = False
 
     def set_option(self, flag: str, value: str) -> None:
         """Set an option, replacing any existing occurrence.
@@ -113,6 +140,8 @@ class Agent:
         """
         if flag in MANAGED_FLAGS:
             setattr(self, MANAGED_FLAGS[flag], value)
+            if flag == "--model":
+                self.model_explicit = True
             return
         self.base_argv = _strip_flag(self.base_argv, flag)
         self.base_argv += [flag, value]
@@ -126,6 +155,25 @@ class Agent:
 
     def set_system_prompt(self, text: str) -> None:
         self.system_prompt = text
+
+    def set_model(self, model: str, thinking: str | None = None) -> None:
+        """Set the agent's model, overriding any pi-cli config value.
+
+        ``thinking`` is appended as pi's ``model:thinking`` suffix. An existing
+        thinking suffix on *model* is replaced rather than stacked, and a bare
+        ``--thinking`` flag left in ``base_argv`` is removed so the chosen
+        suffix is authoritative (``--thinking`` would otherwise override it).
+        """
+        if thinking:
+            base = model
+            head, separator, suffix = model.rpartition(":")
+            if separator and suffix in THINKING_LEVELS:
+                base = head
+            self.model = f"{base}:{thinking}"
+            self.base_argv = _strip_flag(self.base_argv, "--thinking")
+        else:
+            self.model = model
+        self.model_explicit = True
 
     def set_prompt(self, text: str) -> None:
         self.prompt = text
@@ -145,6 +193,8 @@ class Agent:
             argv += ["--name", self.name]
         if self.session_dir:
             argv += ["--session-dir", self.session_dir]
+        if self.model:
+            argv += ["--model", self.model]
         if self.system_prompt:
             argv += ["--system-prompt", self.system_prompt]
         if self.prompt:
