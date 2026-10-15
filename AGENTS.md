@@ -4,6 +4,7 @@ Guidance for agents working in this repository.
 
 This is a uv repo, use `uv add` for dependencies.
 
+Agents remember to update this file (AGENTS.md) after adding new features to the API, or update it when information gets out of sync or date. This does not mean to add a new comment to AGENTS.md for every minor change or code edit! Typically you should update AGENTS.md if the edit contains a brand new source code file, or adding a new parameter to an api or a new route, OR if the edit updated a part of whats described in AGENTS.md to the point it is no longer accurate, in this case you should **REPLACE** the out dated info with the new info, do **NOT** append these updates, otherwise the file grows huge with meaningless info. We want to keep agents.md on the smaller side.
 ## Commands
 
 ```bash
@@ -26,6 +27,7 @@ reformatted.
 ```
 src/pi_agent_graph/
   errors.py        Exception hierarchy (all inherit PiAgentGraphError)
+  diagnostics.py   Enumerated warning/error codes + warning emission
   models.py        Agent, Role, Scenario; managed-flag extraction
   quoting.py       POSIX / Windows / AppleScript quoting
   loader.py        ConfigLoader: pi-cli config discovery + --dry-run resolution
@@ -43,6 +45,7 @@ src/pi_agent_graph/
     bash.py        BashBackend    (writes .sh / .cmd)
     terminal.py    TerminalBackend + pure per-OS invocation builders
 tests/             One test module per source module; ~40 tests per area
+  fakes.py         FakePiCli + FakeLauncher (no-process integration harness)
 examples/          Manual runnable examples (not part of the test suite)
 ```
 
@@ -51,11 +54,22 @@ in sync with behavior changes.
 
 ## Invariants
 
-- **Managed flags live in fields.** `--name`, `--session-dir`, and
+- **Managed flags live in fields.** `--name`, `--session-dir`, `--model`, and
   `--system-prompt` are extracted out of `base_argv` into `Agent` fields.
   Setting a system prompt must **replace**, never append — a command must never
   contain two `--system-prompt` flags. `build_argv()` is pure; never mutate
   `base_argv` while rendering.
+- **The dynamic system prompt always wins.** `get_agents()` applies the rendered
+  prompt *after* resolving the config, so a saved `--system-prompt` never
+  survives.
+- **Model precedence: per-agent > builder default > config.** `Agent.set_model`
+  sets `model_explicit`; `AgentGraphBuilder.set_model` only fills agents whose
+  model is not explicit, so per-agent choices win. A config `--model` lifted by
+  `set_command` is not explicit. Agents left with no model run on pi's default,
+  and `AgentGraphBuilder.start()` emits a `DEFAULT_MODEL` warning.
+- **Enumerate diagnostics.** New warnings belong in `WarningCode` +
+  `collect_warnings`, and new error classes belong in `ERROR_CODES` in
+  `diagnostics.py` — don't free-hand message-only diagnostics.
 - **Long flags only.** Preflight rejects the exact tokens `-p`, `-n`, and
   `--print` because they are ambiguous between `pi` and `pi-cli` (or make a
   session non-interactive). `-ne`/`-ns`/`-nbt`/`-np`/`-nc` are fine.
@@ -80,11 +94,14 @@ in sync with behavior changes.
   `popen`) over mocking internals.
 - `tests/test_loader.py` injects a fake subprocess runner — never shell out to
   a real `pi-cli` in tests.
+- `tests/fakes.py` provides `FakePiCli` (a real `ConfigLoader` over an in-memory
+  `pi-cli --dry-run` runner) and `FakeLauncher` (a recording backend). Prefer
+  them for integration-style tests; no test may spawn a process.
 - Parametrize edge cases (quoting, banned flags, emulators) rather than writing
   near-duplicates.
 
 ## Git
 
-This repo uses `master` and had no commits when the project was scaffolded.
-Commit implementation and tests together; keep generated launch scripts
-(`flows/`, `.sh`, `.cmd`) out of version control unless intentionally added.
+This repo uses `main`. Commit implementation and tests together; keep generated
+launch scripts (`flows/`, `.sh`, `.cmd`) out of version control unless
+intentionally added.
