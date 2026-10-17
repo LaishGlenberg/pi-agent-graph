@@ -20,6 +20,12 @@ def test_explicit_name_is_kept():
     assert Agent(role="worker", name="w1").name == "w1"
 
 
+def test_get_name_and_str_return_name():
+    assert Agent(role="planner").get_name() == "planner"
+    assert str(Agent(role="worker", name="w1")) == "w1"
+    assert str(Agent(role="planner")) == "planner"
+
+
 # -- set_command extracts managed flags ------------------------------------
 def test_set_command_extracts_managed_flags():
     agent = Agent(role="worker")

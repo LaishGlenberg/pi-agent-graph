@@ -204,6 +204,13 @@ class Agent:
         if self.model is not None:
             self.model_explicit = True
 
+    def __str__(self) -> str:
+        return self.get_name()
+
+    def get_name(self) -> str:
+        """Return the agent's display name (defaults to its role)."""
+        return self.name if self.name is not None else self.role
+
     # -- command ---------------------------------------------------------
     def set_command(self, argv: Sequence[str]) -> None:
         """Set the resolved ``pi`` command, extracting managed flags.
