@@ -361,10 +361,15 @@ def resolve_builtin_tools(values: Sequence[str]) -> list[str]:
     return tools
 
 
+def excluded_builtin_tools(tools: Sequence[str]) -> list[str]:
+    """Return the built-in tools *not* named in *tools*, in canonical order."""
+    selected = set(resolve_builtin_tools(tools))
+    return [name for name in BUILTIN_TOOLS if name not in selected]
+
+
 def builtin_tool_flags(tools: Sequence[str]) -> list[str]:
     """Expand selected built-in tools into pi's ``--exclude-tools`` flag."""
-    selected = set(resolve_builtin_tools(tools))
-    excluded = [name for name in BUILTIN_TOOLS if name not in selected]
+    excluded = excluded_builtin_tools(tools)
     if not excluded:
         return []
     return ["--exclude-tools", ",".join(excluded)]

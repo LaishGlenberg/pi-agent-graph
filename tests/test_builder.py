@@ -260,6 +260,30 @@ def test_builder_tools_apply_to_scenario_agents():
         assert "--exclude-tools" in agent.build_argv()
 
 
+def test_builder_exclude_tools_apply_to_scenario_agents():
+    builder = AgentGraphBuilder()
+    builder.set_exclude_tools("bash")
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+
+    for agent in (planner, worker):
+        argv = agent.build_argv()
+        assert argv[argv.index("--exclude-tools") + 1] == "bash"
+
+
+def test_per_agent_exclude_tools_beat_builder_defaults():
+    builder = AgentGraphBuilder()
+    builder.set_exclude_tools("bash")
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    planner.set_exclude_tools("intercom")
+
+    planner_argv = planner.build_argv()
+    worker_argv = worker.build_argv()
+    assert planner_argv[planner_argv.index("--exclude-tools") + 1] == "intercom"
+    assert worker_argv[worker_argv.index("--exclude-tools") + 1] == "bash"
+
+
 def test_builder_context_off_applies_to_scenario_agents():
     builder = AgentGraphBuilder()
     builder.use_context.set(False)

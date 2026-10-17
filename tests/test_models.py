@@ -491,6 +491,72 @@ def test_set_tools_rejects_unknown_tool():
         Agent(role="r").set_tools("read", "nope")
 
 
+def test_set_exclude_tools_emits_exclude_tools():
+    agent = Agent(role="r")
+    agent.set_exclude_tools("bash")
+
+    assert agent.exclude_tools == ["bash"]
+    assert agent.build_argv()[1:3] == ["--exclude-tools", "bash"]
+
+
+def test_set_exclude_tools_accepts_extension_names():
+    agent = Agent(role="r")
+    agent.set_exclude_tools("intercom, bash", "intercom")
+
+    assert agent.build_argv()[1:3] == ["--exclude-tools", "intercom,bash"]
+
+
+def test_set_exclude_tools_merges_with_builtin_keep_list():
+    agent = Agent(role="r")
+    agent.set_tools("read")
+    agent.set_exclude_tools("intercom")
+
+    argv = agent.build_argv()
+    assert argv.count("--exclude-tools") == 1
+    excluded = argv[argv.index("--exclude-tools") + 1].split(",")
+    assert "intercom" in excluded
+    assert set(excluded) >= set(BUILTIN_TOOLS) - {"read"}
+
+
+def test_set_exclude_tools_with_use_tools_false_keeps_both():
+    agent = Agent(role="r")
+    agent.use_tools.set(False)
+    agent.set_exclude_tools("bash")
+
+    argv = agent.build_argv()
+    assert "-nbt" in argv
+    assert argv[argv.index("--exclude-tools") + 1] == "bash"
+
+
+def test_set_exclude_tools_replaces_config_exclude_tools():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "--exclude-tools", "read,bash"])
+    agent.set_exclude_tools("intercom")
+
+    argv = agent.build_argv()
+    assert argv.count("--exclude-tools") == 1
+    assert argv[argv.index("--exclude-tools") + 1] == "intercom"
+
+
+def test_set_exclude_tools_empty_clears():
+    agent = Agent(role="r")
+    agent.set_exclude_tools("bash")
+    agent.set_exclude_tools()
+
+    assert agent.exclude_tools == []
+    assert "--exclude-tools" not in agent.build_argv()
+
+
+def test_display_command_keeps_explicit_exclude_with_keep_list():
+    agent = Agent(role="r")
+    agent.set_tools("read")
+    agent.set_exclude_tools("intercom")
+
+    out = agent.display_command()
+    assert "--exclude-tools" in out
+    assert "intercom" in out
+
+
 def test_empty_extension_string_disables_extensions():
     agent = Agent(role="r")
     agent.set_extensions("")

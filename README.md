@@ -140,6 +140,7 @@ agent = builder.get_scenario("checklist_iteration").get_agents()[0]
 agent.set_extensions("pi-intercom, rpiv-todo, rtk")
 agent.set_skills("pi-intercom")
 agent.set_tools("read", "bash")          # pi-cli's -bt semantics
+agent.set_exclude_tools("bash")          # -xt bash; also drops a tool an extension re-registered
 agent.use_context.set(False)             # -> -nc
 ```
 

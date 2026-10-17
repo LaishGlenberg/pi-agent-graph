@@ -117,6 +117,7 @@ class Agent:
     extensions: list[str] | None = None                  # resolved -e paths
     skills: list[str] | None = None                      # resolved --skill paths
     builtin_tools: list[str] | None = None               # -bt allowlist
+    exclude_tools: list[str] | None = None               # --exclude-tools names
     agent_dir: str | None = None                         # override pi's agent dir
     use_extensions: Switch = field(default_factory=Switch)
     use_skills: Switch = field(default_factory=Switch)
@@ -153,6 +154,11 @@ pi-cli default rather than a Python choice.
   those (`-ns` + `--skill`)
 - `set_tools(*names)` — keep only these built-in tools, disabling the rest via
   `--exclude-tools` (pi-cli's `-bt` semantics; extension tools stay enabled)
+- `set_exclude_tools(*names)` — exclude these tools by name via
+  `--exclude-tools`, whatever registered them. Unlike `set_tools` (a keep-list),
+  this also drops a built-in that an extension re-registered (for example
+  `bash` under pi-parse-commands), and it survives `-nbt`. The two merge into a
+  single `--exclude-tools`. Calling with no names clears the exclusions.
 - `set_option(flag, value)` — replaces `flag` inside `base_argv` if present,
   else appends; used for arbitrary pass-through flags. Managed flags (including
   `--model`) route to their field instead.
@@ -190,10 +196,11 @@ level runs on pi's default; `AgentGraphBuilder.start()` warns about it.
 **Resource precedence.** Extensions, skills, and tools follow the same order:
 config < builder < per-agent. A Python choice strips that family's flags from
 `base_argv` before emitting its own, so a command never carries two `-ne`/
-`--extension` (or `-ns`/`--skill`, or `--exclude-tools`) sets. Families not
-chosen in Python keep the saved config's flags. `set_extensions("")`,
-`set_skills("")`, and `set_tools("")` mean "disabled" and emit `-ne`, `-ns`,
-and `-nbt` respectively.
+`--extension` (or `-ns`/`--skill`, or `--exclude-tools`) sets. `set_tools` and
+`set_exclude_tools` share the tool family and merge into one `--exclude-tools`.
+Families not chosen in Python keep the saved config's flags.
+`set_extensions("")`, `set_skills("")`, and `set_tools("")` mean "disabled" and
+emit `-ne`, `-ns`, and `-nbt` respectively.
 
 The `use_extensions`, `use_skills`, `use_tools`, and `use_context` switches have
 `set(bool)` and `get()`; `.set(False)` emits `-ne`, `-ns`, `-nbt`, or `-nc`,
@@ -480,6 +487,7 @@ class AgentGraphBuilder:
     def set_extensions(self, *names: str, agent_dir: str | Path | None = None) -> None: ...
     def set_skills(self, *names: str, agent_dir: str | Path | None = None) -> None: ...
     def set_tools(self, *names: str) -> None: ...
+    def set_exclude_tools(self, *names: str) -> None: ...
     # Builder-level switches: use_extensions, use_skills, use_tools, use_context
 
     def list_scenarios(self) -> list[str]: ...

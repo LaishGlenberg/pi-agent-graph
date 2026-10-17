@@ -29,6 +29,7 @@ def test_exports_present():
         "collect_warnings",
         "emit_warnings",
         "error_code",
+        "excluded_builtin_tools",
         "launch",
         "Role",
         "Scenario",

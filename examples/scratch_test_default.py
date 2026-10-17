@@ -42,7 +42,7 @@ loader = builder.get_agent_loader()
 
 for agent in agentList:
     #agent.set_command(loader.get(AGENT_COMMANDS[agent.get_name()]))
-    agent.set_extensions('pi-intercom', 'pi-parse-commands')
+    agent.set_extensions('pi-intercom')
     agent.set_skills('pi-intercom')
     agent.use_tools.set(False)
     agent.use_context.set(False)

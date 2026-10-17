@@ -20,7 +20,8 @@ from pathlib import Path
 
 from .resources import (
     BUILTIN_TOOLS,
-    builtin_tool_flags,
+    excluded_builtin_tools,
+    normalize_names,
     resolve_builtin_tools,
     resolve_extensions,
     resolve_skills,
@@ -345,6 +346,10 @@ class Agent:
     skills: list[str] | None = None
     #: Built-in tools to keep; the rest are disabled via ``--exclude-tools``.
     builtin_tools: list[str] | None = None
+    #: Tools to always exclude by name, whatever registered them. Unlike
+    #: ``builtin_tools`` (a keep-list), this also removes a built-in that an
+    #: extension re-registered, such as ``bash`` under pi-parse-commands.
+    exclude_tools: list[str] | None = None
     #: Optional agent directory for name resolution (defaults to pi's).
     agent_dir: str | None = None
     use_extensions: Switch = field(default_factory=Switch)
@@ -488,6 +493,26 @@ class Agent:
         self.builtin_tools = tools
         self.use_tools.set(True)
 
+    def set_exclude_tools(self, *names: str) -> None:
+        """Exclude these tools by name, whatever registered them.
+
+        Values may be repeated or comma-separated. Unlike :meth:`set_tools`
+        (a built-in keep-list), this emits pi's ``--exclude-tools`` directly,
+        so it also removes a built-in that an extension re-registered (for
+        example ``bash`` under pi-parse-commands). Extension and custom tool
+        names are accepted. Calling with no names clears the exclusions.
+        """
+        self.exclude_tools = _dedupe(normalize_names(names))
+
+    def _excluded_tool_names(self) -> list[str]:
+        """Merge the built-in keep-list and explicit excludes, deduped."""
+        excluded: list[str] = []
+        if self.use_tools.get() and self.builtin_tools is not None:
+            excluded.extend(excluded_builtin_tools(self.builtin_tools))
+        if self.exclude_tools:
+            excluded.extend(self.exclude_tools)
+        return _dedupe(excluded)
+
     # -- rendering --------------------------------------------------------
     def _compose_resource_argv(self, argv: list[str]) -> list[str]:
         """Replace the saved command's resource flags with Python choices."""
@@ -511,15 +536,20 @@ class Agent:
                 for path in self.skills:
                     argv += ["--skill", path]
 
-        if self.builtin_tools is not None or self.use_tools.explicit:
+        if (
+            self.builtin_tools is not None
+            or self.exclude_tools is not None
+            or self.use_tools.explicit
+        ):
             argv = _strip_value_option(argv, "--exclude-tools", "-xt")
             argv = _strip_tokens(
                 argv, ("-nt", "--no-tools", "-nbt", "--no-builtin-tools")
             )
             if not self.use_tools.get():
                 argv += ["-nbt"]
-            elif self.builtin_tools is not None:
-                argv += builtin_tool_flags(self.builtin_tools)
+            excluded = self._excluded_tool_names()
+            if excluded:
+                argv += ["--exclude-tools", ",".join(excluded)]
 
         if self.use_context.explicit:
             argv = _strip_tokens(argv, ("-nc", "--no-context-files"))
@@ -546,7 +576,10 @@ class Agent:
 
     def display_command(self) -> str:
         """Return a readable, pi-cli-config-style command line for this agent."""
-        return _format_command(self.build_argv(), builtin_tools=self.builtin_tools)
+        # Explicit excludes may target extension tools, so only hand the
+        # keep-list to the formatter when no explicit excludes were chosen.
+        builtin_tools = self.builtin_tools if self.exclude_tools is None else None
+        return _format_command(self.build_argv(), builtin_tools=builtin_tools)
 
 
 @dataclass

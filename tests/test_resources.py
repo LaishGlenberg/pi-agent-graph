@@ -16,6 +16,7 @@ from pi_agent_graph.resources import (
     BUILTIN_TOOLS,
     builtin_tool_flags,
     default_agent_dir,
+    excluded_builtin_tools,
     normalize_names,
     resolve_builtin_tools,
     resolve_extension,
@@ -229,3 +230,12 @@ def test_builtin_tool_flags_excludes_the_rest():
 
 def test_builtin_tool_flags_empty_when_all_selected():
     assert builtin_tool_flags(list(BUILTIN_TOOLS)) == []
+
+
+def test_excluded_builtin_tools_returns_the_rest():
+    excluded = excluded_builtin_tools(["read", "bash"])
+    assert set(excluded) == set(BUILTIN_TOOLS) - {"read", "bash"}
+
+
+def test_excluded_builtin_tools_empty_when_all_selected():
+    assert excluded_builtin_tools(list(BUILTIN_TOOLS)) == []

@@ -12,6 +12,7 @@ from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
 from .models import Agent, Role, Scenario, Switch
 from .resources import (
+    normalize_names,
     resolve_builtin_tools,
     resolve_extensions,
     resolve_skills,
@@ -149,6 +150,7 @@ class AgentGraphBuilder:
         self.default_extensions: list[str] | None = None
         self.default_skills: list[str] | None = None
         self.default_builtin_tools: list[str] | None = None
+        self.default_exclude_tools: list[str] | None = None
         self.agent_dir: str | None = None
         self.use_extensions = Switch()
         self.use_skills = Switch()
@@ -220,6 +222,17 @@ class AgentGraphBuilder:
         self.default_builtin_tools = tools
         self.use_tools.set(True)
 
+    def set_exclude_tools(self, *names: str) -> None:
+        """Exclude these tools for every agent that did not choose its own.
+
+        Unlike :meth:`set_tools` (a built-in keep-list), this emits pi's
+        ``--exclude-tools`` directly, so it also removes a built-in tool that
+        an extension re-registered (for example ``bash`` under
+        pi-parse-commands). A per-agent :meth:`Agent.set_exclude_tools` wins.
+        No names clears the exclusions.
+        """
+        self.default_exclude_tools = normalize_names(names)
+
     def _fill_default_resources(self, agent: Agent) -> None:
         if agent.agent_dir is None and self.agent_dir is not None:
             agent.agent_dir = self.agent_dir
@@ -238,6 +251,8 @@ class AgentGraphBuilder:
             agent.use_tools.set(self.use_tools.get())
         if agent.builtin_tools is None and self.default_builtin_tools is not None:
             agent.builtin_tools = list(self.default_builtin_tools)
+        if agent.exclude_tools is None and self.default_exclude_tools is not None:
+            agent.exclude_tools = list(self.default_exclude_tools)
 
         if not agent.use_context.explicit and self.use_context.explicit:
             agent.use_context.set(self.use_context.get())

@@ -57,10 +57,14 @@ in sync with behavior changes.
 ## Invariants
 
 - **Resources are Python-overridable.** `Agent.set_extensions` /
-  `set_skills` / `set_tools` (and the builder defaults) resolve names with
-  `resources.py` and **replace** the matching flags in `base_argv`: `-ne` +
-  `--extension`, `-ns` + `--skill`, and `--exclude-tools` (pi-cli's `-bt`
-  semantics). Precedence is config < builder < per-agent. The `use_extensions`,
+  `set_skills` / `set_tools` / `set_exclude_tools` (and the builder defaults)
+  resolve names with `resources.py` and **replace** the matching flags in
+  `base_argv`: `-ne` + `--extension`, `-ns` + `--skill`, and `--exclude-tools`
+  (pi-cli's `-bt` semantics). `set_tools` is a built-in keep-list;
+  `set_exclude_tools` names tools directly, so it also removes a built-in that
+  an extension re-registered (e.g. `bash` under pi-parse-commands). The two
+  merge into one `--exclude-tools`, and an explicit exclude survives `-nbt`.
+  Precedence is config < builder < per-agent. The `use_extensions`,
   `use_skills`, `use_tools`, and `use_context` switches emit `-ne`/`-ns`/`-nbt`/
   `-nc`; `.set(True)` strips a config disable flag, and an empty name list means
   the family is disabled.
