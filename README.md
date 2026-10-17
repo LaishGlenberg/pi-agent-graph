@@ -110,6 +110,9 @@ workspace = "C:/Users/lg/projects/my-app"
 # Preview exactly what will run, without opening anything.
 builder.start_dry([planner, worker], cwd=workspace)
 
+# Or return pi-cli-config-style lines (resource names, abbreviated system prompt).
+lines = builder.display_command([planner, worker])
+
 # The worker (no prompt) launches first; the planner launches last.
 result = builder.start([planner, worker], cwd=workspace)
 print(result.commands)  # exact argv per agent, in launch order

@@ -28,7 +28,7 @@ reformatted.
 src/pi_agent_graph/
   errors.py        Exception hierarchy (all inherit PiAgentGraphError)
   diagnostics.py   Enumerated warning/error codes + warning emission
-  models.py        Agent, Role, Scenario; managed-flag extraction
+  models.py        Agent, Role, Scenario; managed flags + readable command output
   quoting.py       POSIX / Windows / AppleScript quoting
   resources.py     Python port of pi-cli resolution: agent dir, extensions,
                    skills, built-in tools

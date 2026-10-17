@@ -175,6 +175,12 @@ The starting prompt is **always** preceded by `--` so a prompt that begins with
 > Rationale: all mutable state lives in fields; `build_argv()` is deterministic,
 > so calling `launch()` twice or re-emitting bash cannot duplicate flags.
 
+**`display_command() -> str`** — return `build_argv()` as one readable,
+pi-cli-config-style line: resolved extension/skill paths are shortened to their
+config names and merged into `-e` / `-s`, excluded built-in tools are inverted
+into a `-bt` allowlist when possible, and the system prompt is abbreviated to a
+double-quoted tail (`--system-prompt "...last 30 characters"`).
+
 **Model precedence.** Lowest to highest: a `--model` carried by the saved
 pi-cli command (`model_explicit = False`) < a builder-wide
 `AgentGraphBuilder.set_model(...)` default < a per-agent
@@ -496,6 +502,7 @@ class AgentGraphBuilder:
     def start_dry(self, agents: list[Agent], *,
                   options: LaunchOptions | None = None,
                   cwd: str | None = None) -> LaunchResult: ...
+    def display_command(self, agents: list[Agent]) -> str: ...
     def save_bash(self, agents: list[Agent], path: str, *,
                   cwd: str | None = None) -> str: ...
 ```
@@ -522,7 +529,9 @@ precedence rules above).
 `start()` is a thin wrapper: it fills default models, prints a yellow warning
 for every agent that will fall back to pi's default model, then calls
 `launch(agents, backend=..., options=...)`. `start_dry()` and `save_bash()`
-fill default models too, but do not warn.
+fill default models too, but do not warn. `display_command()` fills defaults and
+returns one readable command line per agent, joined by newlines (no launch
+script or terminal wrapper).
 
 ```python
 builder.set_model("opencode-go/mimo-v2.5", "low")   # every agent

@@ -136,6 +136,21 @@ def test_start_dry_prints_without_launching(capsys):
     assert "planner" in out
 
 
+def test_display_command_returns_all_agents_with_defaults():
+    builder = AgentGraphBuilder()
+    builder.set_model("opencode-go/mimo-v2.5", "low")
+    agents = builder.get_scenario("checklist_iteration").get_agents()
+    for agent in agents:
+        agent.set_command(["pi", "-ne"])
+    lines = builder.display_command(agents).splitlines()
+    assert len(lines) == 2
+    assert all("--model opencode-go/mimo-v2.5:low" in line for line in lines)
+    for line in lines:
+        assert line.startswith("pi -ne")
+        # The rendered system prompt stays on one line, abbreviated.
+        assert '--system-prompt "...' in line
+
+
 def test_start_dry_orders_initiator_last(capsys):
     builder = AgentGraphBuilder()
     planner, worker = builder.get_scenario("checklist_iteration").get_agents()

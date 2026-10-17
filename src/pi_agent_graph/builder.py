@@ -382,6 +382,11 @@ class AgentGraphBuilder:
             options=_with_cwd(options, cwd),
         )
 
+    def display_command(self, agents: list[Agent]) -> str:
+        """Return one readable command line per agent, after applying defaults."""
+        self._fill_all_defaults(agents)
+        return "\n".join(agent.display_command() for agent in agents)
+
     def save_bash(
         self, agents: list[Agent], path: str, *, cwd: str | None = None
     ) -> str:

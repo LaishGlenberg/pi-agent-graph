@@ -156,6 +156,96 @@ def test_build_argv_omits_empty_system_prompt():
     assert agent.build_argv() == ["pi", "--name", "r"]
 
 
+# -- readable commands -----------------------------------------------------
+def test_display_command_shortens_and_merges_resources():
+    agent = Agent(
+        role="worker",
+        base_argv=["pi", "-ne"],
+        extensions=[
+            "/home/lg/extensions/pi-parse-commands",
+            "/home/lg/.pi/agent/npm/node_modules/@juicesharp/rpiv-todo",
+        ],
+        skills=["/home/lg/.pi/agent/npm/node_modules/pi-intercom/skills/pi-intercom"],
+    )
+    assert agent.display_command() == (
+        "pi -s pi-intercom -e pi-parse-commands,rpiv-todo --name worker"
+    )
+
+
+def test_display_command_keeps_no_extensions_when_none_set():
+    agent = Agent(role="worker", base_argv=["pi", "-ne"])
+    assert agent.display_command() == "pi -ne --name worker"
+
+
+def test_display_command_inverts_exclude_tools_to_builtin_allowlist():
+    agent = Agent(
+        role="worker",
+        base_argv=["pi", "--exclude-tools", "read,powershell,edit,write,find"],
+    )
+    out = agent.display_command()
+    assert "-bt bash,grep,ls" in out
+    assert "--exclude-tools" not in out
+
+
+def test_display_command_uses_python_builtin_tools_in_order():
+    agent = Agent(role="r")
+    agent.set_tools("grep", "ls", "bash")
+    assert agent.display_command() == "pi -bt grep,ls,bash --name r"
+
+
+def test_display_command_keeps_exclude_tools_with_unknown_names():
+    agent = Agent(role="r", base_argv=["pi", "--exclude-tools", "read,ext_tool"])
+    out = agent.display_command()
+    assert "--exclude-tools read,ext_tool" in out
+    assert "-bt" not in out
+
+
+def test_display_command_keeps_no_context_and_no_builtin_flags():
+    agent = Agent(role="r", base_argv=["pi", "-nc", "-nbt"])
+    assert agent.display_command() == "pi -nc -nbt --name r"
+
+
+def test_display_command_quotes_tokens_with_spaces():
+    agent = Agent(role="worker", prompt="do the thing")
+    assert agent.display_command() == 'pi --name worker -- "do the thing"'
+
+
+def test_display_command_keeps_prompt_apostrophes_readable():
+    agent = Agent(role="worker", prompt="when you're ready, tell the worker")
+    assert agent.display_command() == (
+        'pi --name worker -- "when you\'re ready, tell the worker"'
+    )
+
+
+def test_display_command_escapes_prompt_newlines():
+    agent = Agent(role="worker", prompt="line one\nline two")
+    assert agent.display_command() == 'pi --name worker -- "line one\\nline two"'
+
+
+def test_display_command_shows_short_system_prompt_in_full():
+    agent = Agent(role="worker", system_prompt="short prompt")
+    assert agent.display_command().endswith('--system-prompt "short prompt"')
+
+
+def test_display_command_previews_only_the_system_prompt_tail():
+    tail = "b" * 30
+    agent = Agent(role="worker", system_prompt="a" * 10 + tail)
+    out = agent.display_command()
+    assert out.endswith(f'--system-prompt "...{tail}"')
+    assert "a" * 10 not in out
+
+
+def test_display_command_escapes_system_prompt_newlines():
+    agent = Agent(role="worker", system_prompt="line one\nline two")
+    out = agent.display_command()
+    assert r"line one\nline two" in out
+    assert "\n" not in out
+
+
+def test_display_command_defaults_to_pi():
+    assert Agent(role="worker").display_command() == "pi --name worker"
+
+
 # -- model selection -------------------------------------------------------
 def test_set_model_without_thinking():
     agent = Agent(role="r")

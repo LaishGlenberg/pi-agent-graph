@@ -11,12 +11,15 @@ and lets a Python-level choice override a config one, while keeping
 
 from __future__ import annotations
 
+import json
 import os
+import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .resources import (
+    BUILTIN_TOOLS,
     builtin_tool_flags,
     resolve_builtin_tools,
     resolve_extensions,
@@ -30,6 +33,20 @@ MANAGED_FLAGS: dict[str, str] = {
     "--model": "model",
     "--system-prompt": "system_prompt",
 }
+
+#: How many trailing system-prompt characters :meth:`Agent.display_command` keeps.
+SYSTEM_PROMPT_PREVIEW_CHARS = 30
+
+#: pi-cli config-style resource flags :meth:`Agent.display_command` recognizes.
+_EXTENSION_FLAGS = ("-e", "--extension")
+_SKILL_FLAGS = ("-s", "--skill")
+_EXCLUDE_TOOLS_FLAGS = ("-xt", "--exclude-tools")
+_NO_EXTENSION_FLAGS = ("-ne", "--no-extensions")
+_NO_SKILL_FLAGS = ("-ns", "--no-skills")
+_NO_CONTEXT_FLAGS = ("-nc", "--no-context-files")
+_NO_BUILTIN_TOOL_FLAGS = ("-nbt", "--no-builtin-tools")
+_NO_TOOL_FLAGS = ("-nt", "--no-tools")
+_RESOURCE_SUFFIXES = (".ts", ".js", ".mjs", ".cjs", ".md")
 
 #: pi's valid thinking levels. Used to recognize a ``model:thinking`` suffix so
 #: :meth:`Agent.set_model` can replace it instead of stacking a second ``:``.
@@ -132,6 +149,148 @@ def _strip_tokens(argv: Sequence[str], tokens: Sequence[str]) -> list[str]:
 def _default_pi_argv() -> list[str]:
     """The default command, mirroring pi-cli's ``PI_BIN || "pi"``."""
     return [os.environ.get("PI_BIN") or "pi"]
+
+
+def _system_prompt_preview(text: str) -> str:
+    """Return a double-quoted preview of the system prompt's tail."""
+    if len(text) > SYSTEM_PROMPT_PREVIEW_CHARS:
+        preview = "..." + text[-SYSTEM_PROMPT_PREVIEW_CHARS:]
+    else:
+        preview = text
+    return json.dumps(preview, ensure_ascii=False)
+
+
+def _resource_name(path: str) -> str:
+    """Shorten a resolved resource path to the name a config would use."""
+    name = Path(path).name
+    for suffix in _RESOURCE_SUFFIXES:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _dedupe(values: Sequence[str]) -> list[str]:
+    """Return *values* with duplicates removed, preserving order."""
+    return list(dict.fromkeys(values))
+
+
+def _kept_builtin_tools(excluded: str) -> list[str] | None:
+    """Invert an ``--exclude-tools`` value into a ``-bt`` allowlist."""
+    names = {name.strip() for name in excluded.split(",") if name.strip()}
+    if not names or not names.issubset(BUILTIN_TOOLS):
+        return None
+    return [tool for tool in BUILTIN_TOOLS if tool not in names]
+
+
+def _render_tokens(tokens: Sequence[str]) -> str:
+    """Join *tokens*, quoting safely and abbreviating prompts."""
+    rendered: list[str] = []
+    index = 0
+    length = len(tokens)
+    while index < length:
+        token = tokens[index]
+        if token == "--system-prompt" and index + 1 < length:
+            rendered.append(token)
+            rendered.append(_system_prompt_preview(tokens[index + 1]))
+            index += 2
+            continue
+        if token.startswith("--system-prompt="):
+            rendered.append("--system-prompt")
+            rendered.append(_system_prompt_preview(token.split("=", 1)[1]))
+            index += 1
+            continue
+        if token == "--" and index + 1 < length:
+            rendered.append(token)
+            rendered.append(json.dumps(tokens[index + 1], ensure_ascii=False))
+            index += 2
+            continue
+        rendered.append(shlex.quote(token))
+        index += 1
+    return " ".join(rendered)
+
+
+def _format_command(
+    argv: Sequence[str], *, builtin_tools: list[str] | None = None
+) -> str:
+    """Render a resolved ``pi`` argv in pi-cli config style.
+
+    Resolved extension/skill paths are shortened back to their config names,
+    resource and tool flags are merged, and the (usually multi-line) system
+    prompt is abbreviated to a double-quoted tail so the line stays scannable.
+    """
+    extensions: list[str] = []
+    skills: list[str] = []
+    passthrough: list[str] = []
+    excluded: str | None = None
+    no_extensions = no_skills = no_context = no_builtin = no_tools = False
+
+    index = 1
+    length = len(argv)
+    while index < length:
+        token = argv[index]
+        if token in _EXTENSION_FLAGS and index + 1 < length:
+            extensions.append(argv[index + 1])
+            index += 2
+            continue
+        if token.startswith("--extension="):
+            extensions.append(token.split("=", 1)[1])
+            index += 1
+            continue
+        if token in _SKILL_FLAGS and index + 1 < length:
+            skills.append(argv[index + 1])
+            index += 2
+            continue
+        if token.startswith("--skill="):
+            skills.append(token.split("=", 1)[1])
+            index += 1
+            continue
+        if token in _EXCLUDE_TOOLS_FLAGS and index + 1 < length:
+            excluded = argv[index + 1]
+            index += 2
+            continue
+        if token.startswith("--exclude-tools="):
+            excluded = token.split("=", 1)[1]
+            index += 1
+            continue
+        if token in _NO_EXTENSION_FLAGS:
+            no_extensions = True
+        elif token in _NO_SKILL_FLAGS:
+            no_skills = True
+        elif token in _NO_CONTEXT_FLAGS:
+            no_context = True
+        elif token in _NO_BUILTIN_TOOL_FLAGS:
+            no_builtin = True
+        elif token in _NO_TOOL_FLAGS:
+            no_tools = True
+        else:
+            passthrough.append(token)
+        index += 1
+
+    parts = list(argv[:1])
+    if no_extensions and not extensions:
+        parts.append("-ne")
+    if no_skills and not skills:
+        parts.append("-ns")
+    if skills:
+        parts += ["-s", ",".join(_dedupe([_resource_name(s) for s in skills]))]
+    if extensions:
+        parts += ["-e", ",".join(_dedupe([_resource_name(e) for e in extensions]))]
+    if builtin_tools:
+        parts += ["-bt", ",".join(builtin_tools)]
+    elif excluded is not None:
+        allowed = _kept_builtin_tools(excluded)
+        if allowed is not None and not no_builtin and not no_tools:
+            parts += ["-nbt"] if not allowed else ["-bt", ",".join(allowed)]
+        else:
+            parts += ["--exclude-tools", excluded]
+    if no_context:
+        parts.append("-nc")
+    if no_builtin:
+        parts.append("-nbt")
+    if no_tools:
+        parts.append("-nt")
+    parts += passthrough
+    return _render_tokens(parts)
 
 
 class Switch:
@@ -384,6 +543,10 @@ class Agent:
         if self.prompt:
             argv += ["--", self.prompt]
         return argv
+
+    def display_command(self) -> str:
+        """Return a readable, pi-cli-config-style command line for this agent."""
+        return _format_command(self.build_argv(), builtin_tools=self.builtin_tools)
 
 
 @dataclass
