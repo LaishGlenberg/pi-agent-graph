@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from pi_agent_graph.launchers.terminal import (
     LINUX_EMULATORS,
     TerminalBackend,
     build_windows_script,
+    child_env,
     choose_linux_emulator,
     linux_emulator_command,
     macos_osascript_command,
@@ -218,6 +220,33 @@ def test_backend_launch_returns_pids_and_commands():
     assert result.pids == [4242]
     assert result.commands == [["pi", "-ne", "--name", "worker"]]
     assert result.backend == "terminal"
+
+
+def test_child_env_strips_stale_gnome_terminal_pointers(monkeypatch):
+    monkeypatch.setenv("GNOME_TERMINAL_SERVICE", ":1.157")
+    monkeypatch.setenv("GNOME_TERMINAL_SCREEN", "/org/gnome/Terminal/screen/x")
+    env = child_env()
+    assert "GNOME_TERMINAL_SERVICE" not in env
+    assert "GNOME_TERMINAL_SCREEN" not in env
+    assert env.get("PATH") == os.environ.get("PATH")
+
+
+def test_backend_launch_passes_clean_env(monkeypatch):
+    monkeypatch.setenv("GNOME_TERMINAL_SERVICE", ":1.157")
+    monkeypatch.setenv("GNOME_TERMINAL_SCREEN", "/org/gnome/Terminal/screen/x")
+    seen: dict[str, object] = {}
+
+    class RecordingPopen(FakePopen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            seen.update(kwargs)
+
+    backend = TerminalBackend(which=which_only("gnome-terminal"), popen=RecordingPopen)
+    backend.launch([make()], LaunchOptions(run_id="r", platform="linux"), "r")
+    env = seen["env"]
+    assert isinstance(env, dict)
+    assert "GNOME_TERMINAL_SERVICE" not in env
+    assert "GNOME_TERMINAL_SCREEN" not in env
 
 
 def test_backend_launch_wraps_oserror():

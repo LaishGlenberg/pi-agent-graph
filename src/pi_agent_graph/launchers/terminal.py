@@ -156,6 +156,25 @@ def macos_osascript_command(cmd: Sequence[str], cwd: str | None = None) -> list[
     ]
 
 
+# gnome-terminal exports the owning server's *unique* D-Bus name to child
+# shells. When we spawn another gnome-terminal from inside one, its client
+# pings that name and, if the old server has exited, prints
+# "Failed to use specified server ... Falling back to default server". We
+# always want the default server, so drop the stale pointers from the child.
+_STALE_TERMINAL_ENV: tuple[str, ...] = (
+    "GNOME_TERMINAL_SERVICE",
+    "GNOME_TERMINAL_SCREEN",
+)
+
+
+def child_env() -> dict[str, str]:
+    """Return the environment for a spawned terminal without stale pointers."""
+    env = os.environ.copy()
+    for name in _STALE_TERMINAL_ENV:
+        env.pop(name, None)
+    return env
+
+
 # -- backend --------------------------------------------------------------
 class TerminalBackend:
     name = "terminal"
@@ -203,6 +222,7 @@ class TerminalBackend:
         self, agents: list[Agent], options: LaunchOptions, run_id: str
     ) -> LaunchResult:
         platform = options.platform or sys.platform
+        env = child_env()
         commands: list[list[str]] = []
         pids: list[int | None] = []
         for agent in agents:
@@ -210,7 +230,7 @@ class TerminalBackend:
             commands.append(cmd)
             invocation = self._invocation(cmd, agent, platform)
             try:
-                process = self._popen(invocation, cwd=agent.cwd or None)
+                process = self._popen(invocation, cwd=agent.cwd or None, env=env)
             except OSError as error:
                 raise LaunchError(
                     f"failed to launch agent {agent.role!r}: {error}"
