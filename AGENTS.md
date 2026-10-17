@@ -30,6 +30,8 @@ src/pi_agent_graph/
   diagnostics.py   Enumerated warning/error codes + warning emission
   models.py        Agent, Role, Scenario; managed-flag extraction
   quoting.py       POSIX / Windows / AppleScript quoting
+  resources.py     Python port of pi-cli resolution: agent dir, extensions,
+                   skills, built-in tools
   loader.py        ConfigLoader: pi-cli config discovery + --dry-run resolution
   fixtures.py      ScenarioFixture / RoleFixture; JSON save/load
   scenarios.py     Built-in scenario registry (code, not files)
@@ -54,6 +56,17 @@ in sync with behavior changes.
 
 ## Invariants
 
+- **Resources are Python-overridable.** `Agent.set_extensions` /
+  `set_skills` / `set_tools` (and the builder defaults) resolve names with
+  `resources.py` and **replace** the matching flags in `base_argv`: `-ne` +
+  `--extension`, `-ns` + `--skill`, and `--exclude-tools` (pi-cli's `-bt`
+  semantics). Precedence is config < builder < per-agent. The `use_extensions`,
+  `use_skills`, `use_tools`, and `use_context` switches emit `-ne`/`-ns`/`-nbt`/
+  `-nc`; `.set(True)` strips a config disable flag, and an empty name list means
+  the family is disabled.
+- **The default command is `PI_BIN` or `pi`.** An `Agent` built without a saved
+  config is runnable as-is; `set_command()` still replaces `base_argv` when a
+  pi-cli config is used.
 - **Managed flags live in fields.** `--name`, `--session-dir`, `--model`, and
   `--system-prompt` are extracted out of `base_argv` into `Agent` fields.
   Setting a system prompt must **replace**, never append — a command must never

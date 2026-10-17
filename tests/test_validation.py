@@ -42,7 +42,7 @@ def test_empty_roster():
 
 def test_agent_without_command():
     with pytest.raises(ValidationError) as exc:
-        validate([Agent(role="worker")], "print", opts())
+        validate([Agent(role="worker", base_argv=[])], "print", opts())
     assert "no command" in str(exc.value)
 
 
@@ -90,7 +90,11 @@ def test_bash_with_path_passes():
 
 def test_multiple_errors_are_aggregated():
     with pytest.raises(ValidationError) as exc:
-        validate([Agent(role="a"), Agent(role="b")], "npm", opts())
+        validate(
+            [Agent(role="a", base_argv=[]), Agent(role="b", base_argv=[])],
+            "npm",
+            opts(),
+        )
     message = str(exc.value)
     assert "no command" in message
     assert "unknown backend" in message

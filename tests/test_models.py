@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from pi_agent_graph.errors import UnknownToolError
 from pi_agent_graph.models import Agent, Role, Scenario
+from pi_agent_graph.resources import BUILTIN_TOOLS
 
 
 # -- name defaults ---------------------------------------------------------
@@ -279,3 +283,219 @@ def test_scenario_helpers():
     scenario = Scenario(key="k", description="desc", roles={"worker": role})
     assert scenario.agent_names() == ["worker"]
     assert scenario.get("worker") is role
+
+
+# -- resources -------------------------------------------------------------
+def make_agent_dir(tmp_path: Path, *names: str) -> Path:
+    agent_dir = tmp_path / "agent"
+    for name in names:
+        extension = agent_dir / "extensions" / name
+        extension.mkdir(parents=True)
+        (extension / "index.ts").write_text("", encoding="utf-8")
+    return agent_dir
+
+
+def make_skill(agent_dir: Path, name: str) -> Path:
+    skill = agent_dir / "skills" / f"{name}.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text("", encoding="utf-8")
+    return skill
+
+
+def test_default_command_is_pi(monkeypatch):
+    monkeypatch.delenv("PI_BIN", raising=False)
+    assert Agent(role="worker").build_argv() == ["pi", "--name", "worker"]
+
+
+def test_pi_bin_is_the_default_command(monkeypatch):
+    monkeypatch.setenv("PI_BIN", "/opt/pi")
+    assert Agent(role="worker").build_argv()[0] == "/opt/pi"
+
+
+def test_set_extensions_resolves_and_adds_no_extensions(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "pi-intercom")
+    agent = Agent(role="r")
+    agent.set_extensions("pi-intercom", agent_dir=agent_dir)
+
+    argv = agent.build_argv()
+    resolved = str((agent_dir / "extensions" / "pi-intercom").resolve())
+    assert agent.extensions == [resolved]
+    assert argv[:4] == ["pi", "-ne", "--extension", resolved]
+
+
+def test_set_extensions_accepts_comma_separated_values(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "one", "two")
+    agent = Agent(role="r")
+    agent.set_extensions("one, two", agent_dir=agent_dir)
+
+    assert len(agent.extensions or []) == 2
+    assert agent.build_argv().count("--extension") == 2
+
+
+def test_set_extensions_replaces_config_extensions_only(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "new")
+    agent = Agent(role="r")
+    agent.set_command(
+        [
+            "pi",
+            "-ne",
+            "--extension",
+            "/old/extension",
+            "-ns",
+            "--skill",
+            "/old/skill.md",
+        ]
+    )
+    agent.set_extensions("new", agent_dir=agent_dir)
+
+    argv = agent.build_argv()
+    assert "/old/extension" not in argv
+    assert "--extension" in argv
+    assert argv.count("--extension") == 1
+    assert argv.count("-ne") == 1
+    # The untouched skill family still comes from the saved command.
+    assert argv.count("--skill") == 1
+    assert "/old/skill.md" in argv
+
+
+def test_set_skills_resolves_and_adds_no_skills(tmp_path):
+    agent_dir = make_agent_dir(tmp_path)
+    skill = make_skill(agent_dir, "playwright-cli")
+    agent = Agent(role="r")
+    agent.set_skills("playwright-cli", agent_dir=agent_dir)
+
+    argv = agent.build_argv()
+    assert agent.skills == [str(skill.resolve())]
+    assert argv[:4] == ["pi", "-ns", "--skill", str(skill.resolve())]
+
+
+def test_set_tools_emits_exclude_tools():
+    agent = Agent(role="r")
+    agent.set_tools("read", "bash")
+
+    argv = agent.build_argv()
+    assert agent.builtin_tools == ["read", "bash"]
+    assert argv[1] == "--exclude-tools"
+    excluded = argv[2].split(",")
+    assert set(excluded) == set(BUILTIN_TOOLS) - {"read", "bash"}
+
+
+def test_set_tools_replaces_config_exclude_tools():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "--exclude-tools", "read,bash"])
+    agent.set_tools("read")
+
+    argv = agent.build_argv()
+    assert argv.count("--exclude-tools") == 1
+    assert "bash" in argv[argv.index("--exclude-tools") + 1]
+
+
+def test_set_tools_rejects_unknown_tool():
+    with pytest.raises(UnknownToolError):
+        Agent(role="r").set_tools("read", "nope")
+
+
+def test_empty_extension_string_disables_extensions():
+    agent = Agent(role="r")
+    agent.set_extensions("")
+
+    assert agent.use_extensions.get() is False
+    assert "-ne" in agent.build_argv()
+    assert "--extension" not in agent.build_argv()
+
+
+def test_empty_skill_string_disables_skills():
+    agent = Agent(role="r")
+    agent.set_skills("")
+
+    assert agent.use_skills.get() is False
+    argv = agent.build_argv()
+    assert "-ns" in argv
+    assert "--skill" not in argv
+
+
+def test_empty_tool_string_disables_builtin_tools():
+    agent = Agent(role="r")
+    agent.set_tools("")
+
+    assert agent.use_tools.get() is False
+    assert "-nbt" in agent.build_argv()
+
+
+def test_use_extensions_false_overrides_config():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "-ne", "--extension", "/old"])
+    agent.use_extensions.set(False)
+
+    assert agent.build_argv() == ["pi", "-ne", "--name", "r"]
+
+
+def test_use_extensions_true_strips_config_disable_flag():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "-ne", "--extension", "/old"])
+    agent.use_extensions.set(True)
+
+    argv = agent.build_argv()
+    assert "-ne" not in argv
+    assert "--extension" not in argv
+
+
+def test_use_skills_false_overrides_config():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "-ns", "--skill", "/old.md"])
+    agent.use_skills.set(False)
+
+    argv = agent.build_argv()
+    assert argv.count("-ns") == 1
+    assert "--skill" not in argv
+
+
+def test_use_tools_false_overrides_config():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "--exclude-tools", "read"])
+    agent.use_tools.set(False)
+
+    argv = agent.build_argv()
+    assert "-nbt" in argv
+    assert "--exclude-tools" not in argv
+
+
+def test_use_context_false_adds_no_context_files():
+    agent = Agent(role="r")
+    agent.use_context.set(False)
+
+    assert "-nc" in agent.build_argv()
+
+
+def test_use_context_true_strips_config_flag():
+    agent = Agent(role="r")
+    agent.set_command(["pi", "-nc"])
+    agent.use_context.set(True)
+
+    assert "-nc" not in agent.build_argv()
+
+
+def test_switch_get_and_explicit():
+    switch = Agent(role="r").use_context
+    assert switch.get() is True
+    assert switch.explicit is False
+
+    switch.set(False)
+    assert switch.get() is False
+    assert switch.explicit is True
+    assert bool(switch) is False
+
+
+def test_resource_composition_is_pure(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "ext")
+    agent = Agent(role="r")
+    agent.set_command(["pi", "-ne", "--extension", "/old"])
+    agent.set_extensions("ext", agent_dir=agent_dir)
+
+    before = list(agent.base_argv)
+    first = agent.build_argv()
+    second = agent.build_argv()
+
+    assert first == second
+    assert agent.base_argv == before
+    assert "/old" not in first

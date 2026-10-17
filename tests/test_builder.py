@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pi_agent_graph.builder import (
@@ -192,3 +194,123 @@ def test_save_bash_applies_cwd(tmp_path):
         agent.set_command(["pi", "-ne"])
     builder.save_bash(agents, str(tmp_path / "flow.sh"), cwd=str(tmp_path))
     assert all(agent.cwd == str(tmp_path) for agent in agents)
+
+
+# -- resource defaults -----------------------------------------------------
+def make_agent_dir(tmp_path: Path, *names: str) -> Path:
+    agent_dir = tmp_path / "agent"
+    for name in names:
+        extension = agent_dir / "extensions" / name
+        extension.mkdir(parents=True)
+        (extension / "index.ts").write_text("", encoding="utf-8")
+    return agent_dir
+
+
+def test_builder_extensions_apply_to_scenario_agents(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "ext")
+    builder = AgentGraphBuilder()
+    builder.set_extensions("ext", agent_dir=agent_dir)
+
+    agents = builder.get_scenario("checklist_iteration").get_agents()
+
+    resolved = str((agent_dir / "extensions" / "ext").resolve())
+    for agent in agents:
+        argv = agent.build_argv()
+        assert argv[:2] == ["pi", "-ne"]
+        assert argv[argv.index("--extension") + 1] == resolved
+
+
+def test_builder_skills_apply_to_scenario_agents(tmp_path):
+    agent_dir = tmp_path / "agent"
+    skill = agent_dir / "skills" / "review.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("", encoding="utf-8")
+    builder = AgentGraphBuilder()
+    builder.set_skills("review", agent_dir=agent_dir)
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+
+    for agent in (planner, worker):
+        assert "-ns" in agent.build_argv()
+        assert str(skill.resolve()) in agent.build_argv()
+
+
+def test_builder_tools_apply_to_scenario_agents():
+    builder = AgentGraphBuilder()
+    builder.set_tools("read", "bash")
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+
+    for agent in (planner, worker):
+        assert "--exclude-tools" in agent.build_argv()
+
+
+def test_builder_context_off_applies_to_scenario_agents():
+    builder = AgentGraphBuilder()
+    builder.use_context.set(False)
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+
+    assert "-nc" in planner.build_argv()
+    assert "-nc" in worker.build_argv()
+
+
+def test_per_agent_resources_beat_builder_defaults(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "global", "own")
+    builder = AgentGraphBuilder()
+    builder.set_extensions("global", agent_dir=agent_dir)
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    planner.set_extensions("own", agent_dir=agent_dir)
+
+    planner_argv = planner.build_argv()
+    worker_argv = worker.build_argv()
+    assert str((agent_dir / "extensions" / "own").resolve()) in planner_argv
+    assert str((agent_dir / "extensions" / "global").resolve()) not in planner_argv
+    assert str((agent_dir / "extensions" / "global").resolve()) in worker_argv
+
+
+def test_per_agent_tools_beat_builder_defaults():
+    builder = AgentGraphBuilder()
+    builder.set_tools("read", "bash")
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+    planner.set_tools("read")
+
+    planner_argv = planner.build_argv()
+    worker_argv = worker.build_argv()
+    planner_excluded = planner_argv[planner_argv.index("--exclude-tools") + 1]
+    worker_excluded = worker_argv[worker_argv.index("--exclude-tools") + 1]
+    assert "bash" in planner_excluded
+    assert "bash" not in worker_excluded
+
+
+def test_builder_empty_extensions_disables_for_every_agent():
+    builder = AgentGraphBuilder()
+    builder.set_extensions()
+
+    planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+
+    for agent in (planner, worker):
+        argv = agent.build_argv()
+        assert "-ne" in argv
+        assert "--extension" not in argv
+
+
+def test_builder_extensions_replace_saved_config_extensions(tmp_path):
+    agent_dir = make_agent_dir(tmp_path, "own")
+
+    class FakeLoader:
+        def get(self, name):
+            return ["pi", "-ne", "--extension", "/config-ext"]
+
+    role = Role(name="worker", description="d", config="w1")
+    scenario = Scenario(key="k", description="desc", roles={"worker": role})
+    builder = AgentGraphBuilder(loader=FakeLoader())
+    builder.set_extensions("own", agent_dir=agent_dir)
+
+    agent = ScenarioBuilder(builder, scenario).get("worker")
+    argv = agent.build_argv()
+
+    assert "/config-ext" not in argv
+    assert str((agent_dir / "extensions" / "own").resolve()) in argv

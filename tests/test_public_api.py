@@ -34,10 +34,13 @@ def test_exports_present():
         "Scenario",
         "ScenarioBuilder",
         "SCENARIOS",
+        "Switch",
         "get_scenario",
         "scenario_names",
         "render_system_prompt",
         "parse_dry_run",
+        "resolve_extension",
+        "resolve_skill",
     ]:
         assert hasattr(pag, name), name
 
@@ -51,6 +54,10 @@ def test_error_hierarchy():
         "ScenarioNotFoundError",
         "ValidationError",
         "LaunchError",
+        "ResourceError",
+        "ResourceNotFoundError",
+        "AmbiguousResourceError",
+        "UnknownToolError",
     ]:
         error = getattr(pag, name)
         assert issubclass(error, pag.PiAgentGraphError)

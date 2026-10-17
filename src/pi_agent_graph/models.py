@@ -1,17 +1,27 @@
 """Core data model: :class:`Agent`, :class:`Role`, and :class:`Scenario`.
 
 The key invariant in this module is that an :class:`Agent` owns its managed
-flags (``--name``, ``--session-dir``, ``--model``, ``--system-prompt``) as
-*fields*, never as loose tokens in ``base_argv``. That makes system-prompt
-injection a replace rather than an append, and lets a Python-level model
-override a config one, while keeping :meth:`Agent.build_argv` deterministic and
-side-effect free.
+flags (``--name``, ``--session-dir``, ``--model``, ``--system-prompt``) and its
+resource choices (extensions, skills, built-in tools, and the ``use_*``
+switches) as *fields*, never as loose tokens in ``base_argv``. That makes
+system-prompt injection and resource overrides a replace rather than an append,
+and lets a Python-level choice override a config one, while keeping
+:meth:`Agent.build_argv` deterministic and side-effect free.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from .resources import (
+    builtin_tool_flags,
+    resolve_builtin_tools,
+    resolve_extensions,
+    resolve_skills,
+)
 
 # Managed flag -> dataclass field name.
 MANAGED_FLAGS: dict[str, str] = {
@@ -90,18 +100,98 @@ def _strip_flag(argv: Sequence[str], flag: str) -> list[str]:
     return result
 
 
+def _strip_value_option(
+    argv: Sequence[str], long_flag: str, short_flag: str
+) -> list[str]:
+    """Remove ``--flag value``, ``--flag=value``, ``-f value``, and ``-fvalue``."""
+    result: list[str] = []
+    index = 0
+    length = len(argv)
+    while index < length:
+        token = argv[index]
+        if token in (long_flag, short_flag):
+            index += 2  # drop the flag and its detached value
+            continue
+        if token.startswith(long_flag + "="):
+            index += 1
+            continue
+        if token.startswith(short_flag) and len(token) > len(short_flag):
+            index += 1  # attached value, with or without a leading `=`
+            continue
+        result.append(token)
+        index += 1
+    return result
+
+
+def _strip_tokens(argv: Sequence[str], tokens: Sequence[str]) -> list[str]:
+    """Remove every exact token in *tokens* from *argv*."""
+    drop = set(tokens)
+    return [token for token in argv if token not in drop]
+
+
+def _default_pi_argv() -> list[str]:
+    """The default command, mirroring pi-cli's ``PI_BIN || "pi"``."""
+    return [os.environ.get("PI_BIN") or "pi"]
+
+
+class Switch:
+    """A Python-level on/off choice for one resource family.
+
+    ``explicit`` distinguishes the untouched default (enabled) from a call to
+    :meth:`set`, so builder defaults only fill agents that did not choose for
+    themselves. ``get()`` returns the current value; setting it to ``True`` is
+    a no-op unless a saved config disabled the family, in which case the
+    config's disable flag is removed.
+    """
+
+    __slots__ = ("_enabled", "_explicit")
+
+    def __init__(self, enabled: bool = True) -> None:
+        self._enabled = enabled
+        self._explicit = False
+
+    def set(self, enabled: bool) -> None:
+        self._enabled = bool(enabled)
+        self._explicit = True
+
+    def get(self) -> bool:
+        return self._enabled
+
+    @property
+    def explicit(self) -> bool:
+        return self._explicit
+
+    def __bool__(self) -> bool:
+        return self._enabled
+
+    def __repr__(self) -> str:
+        return f"Switch(enabled={self._enabled!r}, explicit={self._explicit!r})"
+
+
 @dataclass
 class Agent:
     """A single pi session to be launched."""
 
     role: str
-    base_argv: list[str] = field(default_factory=list)
+    base_argv: list[str] = field(default_factory=_default_pi_argv)
     name: str | None = None
     session_dir: str | None = None
     system_prompt: str | None = None
     model: str | None = None
     prompt: str | None = None
     cwd: str | None = None
+    #: Resolved extension paths chosen in Python. ``None`` means "leave whatever
+    #: the saved command carries"; an empty list means "no extensions".
+    extensions: list[str] | None = None
+    skills: list[str] | None = None
+    #: Built-in tools to keep; the rest are disabled via ``--exclude-tools``.
+    builtin_tools: list[str] | None = None
+    #: Optional agent directory for name resolution (defaults to pi's).
+    agent_dir: str | None = None
+    use_extensions: Switch = field(default_factory=Switch)
+    use_skills: Switch = field(default_factory=Switch)
+    use_tools: Switch = field(default_factory=Switch)
+    use_context: Switch = field(default_factory=Switch)
     #: True when the model was chosen in Python (constructor or
     #: :meth:`set_model`) rather than inherited from the pi-cli config. A
     #: builder-level default only fills in agents whose model is *not*
@@ -185,10 +275,97 @@ class Agent:
         """Alias for :meth:`set_cwd`: the agent's working directory."""
         self.set_cwd(path)
 
+    # -- resources --------------------------------------------------------
+    def set_extensions(self, *names: str, agent_dir: str | Path | None = None) -> None:
+        """Resolve extension names/paths and load exactly those extensions.
+
+        Values may be repeated or comma-separated. Resolved paths replace any
+        ``-e``/``-ne`` pair carried by the saved command, and any extension
+        names already there. Calling with no names (or only empty strings) is
+        equivalent to :meth:`Switch.set` ``False`` on ``use_extensions``.
+        """
+        resolved = resolve_extensions(names, agent_dir or self.agent_dir)
+        if not resolved:
+            self.extensions = []
+            self.use_extensions.set(False)
+            return
+        self.extensions = resolved
+        self.use_extensions.set(True)
+
+    def set_skills(self, *names: str, agent_dir: str | Path | None = None) -> None:
+        """Resolve skill names/paths and load exactly those skills.
+
+        Values may be repeated or comma-separated. Resolved paths replace any
+        ``--skill``/``-ns`` pair carried by the saved command. Calling with no
+        names (or only empty strings) disables skills via ``use_skills``.
+        """
+        resolved = resolve_skills(names, agent_dir or self.agent_dir)
+        if not resolved:
+            self.skills = []
+            self.use_skills.set(False)
+            return
+        self.skills = resolved
+        self.use_skills.set(True)
+
+    def set_tools(self, *names: str) -> None:
+        """Keep only the named built-in tools, like pi-cli's ``-bt``.
+
+        The rest become ``--exclude-tools`` while extension tools stay enabled.
+        Calling with no names (or only empty strings) disables built-in tools
+        via ``use_tools``.
+        """
+        tools = resolve_builtin_tools(names)
+        if not tools:
+            self.builtin_tools = []
+            self.use_tools.set(False)
+            return
+        self.builtin_tools = tools
+        self.use_tools.set(True)
+
     # -- rendering --------------------------------------------------------
+    def _compose_resource_argv(self, argv: list[str]) -> list[str]:
+        """Replace the saved command's resource flags with Python choices."""
+        if self.extensions is not None or self.use_extensions.explicit:
+            argv = _strip_value_option(argv, "--extension", "-e")
+            argv = _strip_tokens(argv, ("-ne", "--no-extensions"))
+            if not self.use_extensions.get():
+                argv += ["-ne"]
+            elif self.extensions:
+                argv += ["-ne"]
+                for path in self.extensions:
+                    argv += ["--extension", path]
+
+        if self.skills is not None or self.use_skills.explicit:
+            argv = _strip_value_option(argv, "--skill", "-s")
+            argv = _strip_tokens(argv, ("-ns", "--no-skills"))
+            if not self.use_skills.get():
+                argv += ["-ns"]
+            elif self.skills:
+                argv += ["-ns"]
+                for path in self.skills:
+                    argv += ["--skill", path]
+
+        if self.builtin_tools is not None or self.use_tools.explicit:
+            argv = _strip_value_option(argv, "--exclude-tools", "-xt")
+            argv = _strip_tokens(
+                argv, ("-nt", "--no-tools", "-nbt", "--no-builtin-tools")
+            )
+            if not self.use_tools.get():
+                argv += ["-nbt"]
+            elif self.builtin_tools is not None:
+                argv += builtin_tool_flags(self.builtin_tools)
+
+        if self.use_context.explicit:
+            argv = _strip_tokens(argv, ("-nc", "--no-context-files"))
+            if not self.use_context.get():
+                argv += ["-nc"]
+
+        return argv
+
     def build_argv(self) -> list[str]:
         """Return a fresh, fully-assembled argv. Never mutates ``self``."""
         _, argv = _split_managed(self.base_argv)
+        argv = self._compose_resource_argv(argv)
         if self.name:
             argv += ["--name", self.name]
         if self.session_dir:

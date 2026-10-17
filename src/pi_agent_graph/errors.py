@@ -39,6 +39,22 @@ class LaunchError(PiAgentGraphError):
     """A launch backend could not start an agent."""
 
 
+class ResourceError(PiAgentGraphError):
+    """Base class for extension/skill/tool resolution errors."""
+
+
+class ResourceNotFoundError(ResourceError):
+    """A named extension or skill could not be found."""
+
+
+class AmbiguousResourceError(ResourceError):
+    """A named extension or skill matched more than one path."""
+
+
+class UnknownToolError(PiAgentGraphError):
+    """A tool name is not one of pi's built-in tools."""
+
+
 class FixtureError(PiAgentGraphError):
     """Base class for fixture save/load errors."""
 

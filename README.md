@@ -126,6 +126,25 @@ from pi_agent_graph import launch
 result = launch([planner, worker], backend="print")
 ```
 
+## Building commands in Python
+
+You do not need a saved pi-cli config. Agents default to `PI_BIN` (or `pi`),
+and extension/skill/tool names are resolved with the same search rules pi-cli
+uses:
+
+```python
+agent = builder.get_scenario("checklist_iteration").get_agents()[0]
+agent.set_extensions("pi-intercom, rpiv-todo, rtk")
+agent.set_skills("pi-intercom")
+agent.set_tools("read", "bash")          # pi-cli's -bt semantics
+agent.use_context.set(False)             # -> -nc
+```
+
+Python choices replace the matching flags from a saved config; families you do
+not touch keep the config's values. `set_extensions("")` (or
+`use_extensions.set(False)`) disables extensions, and the same pattern applies
+to skills, tools, and context files.
+
 ## Model selection
 
 Set a model per agent, or a default for the whole roster. `thinking` is

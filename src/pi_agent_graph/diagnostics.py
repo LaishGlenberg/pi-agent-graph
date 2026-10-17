@@ -35,6 +35,10 @@ class ErrorCode(StrEnum):
     FIXTURE = "fixture"
     FIXTURE_NOT_FOUND = "fixture_not_found"
     FIXTURE_FORMAT = "fixture_format"
+    RESOURCE = "resource"
+    RESOURCE_NOT_FOUND = "resource_not_found"
+    RESOURCE_AMBIGUOUS = "resource_ambiguous"
+    UNKNOWN_TOOL = "unknown_tool"
     UNKNOWN = "unknown"
 
 
@@ -51,6 +55,10 @@ ERROR_CODES: dict[type[errors.PiAgentGraphError], ErrorCode] = {
     errors.FixtureNotFoundError: ErrorCode.FIXTURE_NOT_FOUND,
     errors.FixtureFormatError: ErrorCode.FIXTURE_FORMAT,
     errors.FixtureError: ErrorCode.FIXTURE,
+    errors.ResourceNotFoundError: ErrorCode.RESOURCE_NOT_FOUND,
+    errors.AmbiguousResourceError: ErrorCode.RESOURCE_AMBIGUOUS,
+    errors.UnknownToolError: ErrorCode.UNKNOWN_TOOL,
+    errors.ResourceError: ErrorCode.RESOURCE,
     errors.PiAgentGraphError: ErrorCode.UNKNOWN,
 }
 

@@ -14,6 +14,7 @@ from .diagnostics import (
     error_code,
 )
 from .errors import (
+    AmbiguousResourceError,
     ConfigNotFoundError,
     ConfigParseError,
     FixtureError,
@@ -22,8 +23,11 @@ from .errors import (
     LaunchError,
     PiAgentGraphError,
     PiCliNotFoundError,
+    ResourceError,
+    ResourceNotFoundError,
     SavedConfigNotFoundError,
     ScenarioNotFoundError,
+    UnknownToolError,
     ValidationError,
 )
 from .fixtures import (
@@ -35,16 +39,28 @@ from .fixtures import (
 )
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader, parse_dry_run
-from .models import Agent, Role, Scenario
+from .models import Agent, Role, Scenario, Switch
+from .resources import (
+    BUILTIN_TOOLS,
+    builtin_tool_flags,
+    default_agent_dir,
+    resolve_builtin_tools,
+    resolve_extension,
+    resolve_extensions,
+    resolve_skill,
+    resolve_skills,
+)
 from .scenarios import SCENARIOS, get_scenario, scenario_names
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "BUILTIN_TOOLS",
     "ERROR_CODES",
     "SCENARIOS",
     "Agent",
     "AgentGraphBuilder",
+    "AmbiguousResourceError",
     "ConfigLoader",
     "ConfigNotFoundError",
     "ConfigParseError",
@@ -58,6 +74,8 @@ __all__ = [
     "LaunchResult",
     "PiAgentGraphError",
     "PiCliNotFoundError",
+    "ResourceError",
+    "ResourceNotFoundError",
     "Role",
     "RoleFixture",
     "SavedConfigNotFoundError",
@@ -65,10 +83,14 @@ __all__ = [
     "ScenarioBuilder",
     "ScenarioFixture",
     "ScenarioNotFoundError",
+    "Switch",
+    "UnknownToolError",
     "ValidationError",
     "WarningCode",
     "__version__",
+    "builtin_tool_flags",
     "collect_warnings",
+    "default_agent_dir",
     "emit_warnings",
     "error_code",
     "fixture_path",
@@ -78,6 +100,11 @@ __all__ = [
     "main",
     "parse_dry_run",
     "render_system_prompt",
+    "resolve_builtin_tools",
+    "resolve_extension",
+    "resolve_extensions",
+    "resolve_skill",
+    "resolve_skills",
     "save_fixture",
     "scenario_names",
 ]

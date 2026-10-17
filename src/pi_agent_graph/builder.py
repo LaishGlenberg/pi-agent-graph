@@ -10,7 +10,12 @@ from . import diagnostics, fixtures
 from .errors import FixtureFormatError
 from .launchers import LaunchOptions, LaunchResult, launch
 from .loader import ConfigLoader
-from .models import Agent, Role, Scenario
+from .models import Agent, Role, Scenario, Switch
+from .resources import (
+    resolve_builtin_tools,
+    resolve_extensions,
+    resolve_skills,
+)
 from .scenarios import SCENARIOS
 from .scenarios import get_scenario as _lookup_scenario
 
@@ -120,8 +125,8 @@ class ScenarioBuilder:
                 if fixture_role.prompt:
                     agent.set_prompt(fixture_role.prompt)
             # A builder-level default fills only agents that did not choose a
-            # model in Python; a config model is overridden by it.
-            builder._fill_default_model(agent)
+            # model or resource in Python; config values are overridden by it.
+            builder._fill_defaults(agent)
             agents.append(agent)
         return agents
 
@@ -141,6 +146,14 @@ class AgentGraphBuilder:
         self.shared_context = ""
         self.default_model: str | None = None
         self.default_thinking: str | None = None
+        self.default_extensions: list[str] | None = None
+        self.default_skills: list[str] | None = None
+        self.default_builtin_tools: list[str] | None = None
+        self.agent_dir: str | None = None
+        self.use_extensions = Switch()
+        self.use_skills = Switch()
+        self.use_tools = Switch()
+        self.use_context = Switch()
 
     # -- shared prompt context -------------------------------------------
     def set_shared_goal(self, text: str) -> None:
@@ -163,9 +176,79 @@ class AgentGraphBuilder:
         if self.default_model is not None and not agent.model_explicit:
             agent.set_model(self.default_model, self.default_thinking)
 
-    def _fill_default_models(self, agents: Iterable[Agent]) -> None:
+    # -- resource defaults ------------------------------------------------
+    def set_extensions(self, *names: str, agent_dir: str | Path | None = None) -> None:
+        """Load these extensions for every agent that did not choose its own.
+
+        A per-agent :meth:`Agent.set_extensions` always wins, and either choice
+        replaces extensions carried by a saved pi-cli command. No names means
+        disable extensions (``-ne``).
+        """
+        resolved = resolve_extensions(names, agent_dir or self.agent_dir)
+        if not resolved:
+            self.default_extensions = []
+            self.use_extensions.set(False)
+            return
+        self.default_extensions = resolved
+        self.use_extensions.set(True)
+
+    def set_skills(self, *names: str, agent_dir: str | Path | None = None) -> None:
+        """Load these skills for every agent that did not choose its own.
+
+        A per-agent :meth:`Agent.set_skills` always wins, and no names means
+        disable skills (``-ns``).
+        """
+        resolved = resolve_skills(names, agent_dir or self.agent_dir)
+        if not resolved:
+            self.default_skills = []
+            self.use_skills.set(False)
+            return
+        self.default_skills = resolved
+        self.use_skills.set(True)
+
+    def set_tools(self, *names: str) -> None:
+        """Keep only these built-in tools for every agent that did not choose.
+
+        No names means disable built-in tools (``-nbt``), leaving extension
+        tools enabled.
+        """
+        tools = resolve_builtin_tools(names)
+        if not tools:
+            self.default_builtin_tools = []
+            self.use_tools.set(False)
+            return
+        self.default_builtin_tools = tools
+        self.use_tools.set(True)
+
+    def _fill_default_resources(self, agent: Agent) -> None:
+        if agent.agent_dir is None and self.agent_dir is not None:
+            agent.agent_dir = self.agent_dir
+
+        if not agent.use_extensions.explicit and self.use_extensions.explicit:
+            agent.use_extensions.set(self.use_extensions.get())
+        if agent.extensions is None and self.default_extensions is not None:
+            agent.extensions = list(self.default_extensions)
+
+        if not agent.use_skills.explicit and self.use_skills.explicit:
+            agent.use_skills.set(self.use_skills.get())
+        if agent.skills is None and self.default_skills is not None:
+            agent.skills = list(self.default_skills)
+
+        if not agent.use_tools.explicit and self.use_tools.explicit:
+            agent.use_tools.set(self.use_tools.get())
+        if agent.builtin_tools is None and self.default_builtin_tools is not None:
+            agent.builtin_tools = list(self.default_builtin_tools)
+
+        if not agent.use_context.explicit and self.use_context.explicit:
+            agent.use_context.set(self.use_context.get())
+
+    def _fill_defaults(self, agent: Agent) -> None:
+        self._fill_default_model(agent)
+        self._fill_default_resources(agent)
+
+    def _fill_all_defaults(self, agents: Iterable[Agent]) -> None:
         for agent in agents:
-            self._fill_default_model(agent)
+            self._fill_defaults(agent)
 
     def render_system_prompt(self, role: Role, scenario_description: str = "") -> str:
         return render_system_prompt(
@@ -276,7 +359,7 @@ class AgentGraphBuilder:
         win. Agents with no model fall back to pi's default and are warned
         about before launch.
         """
-        self._fill_default_models(agents)
+        self._fill_all_defaults(agents)
         diagnostics.emit_warnings(diagnostics.collect_warnings(agents))
         return launch(
             agents,
@@ -292,7 +375,7 @@ class AgentGraphBuilder:
         cwd: str | None = None,
     ) -> LaunchResult:
         """Print the commands :meth:`start` would run, without launching."""
-        self._fill_default_models(agents)
+        self._fill_all_defaults(agents)
         return launch(
             agents,
             backend="print",
@@ -302,7 +385,7 @@ class AgentGraphBuilder:
     def save_bash(
         self, agents: list[Agent], path: str, *, cwd: str | None = None
     ) -> str:
-        self._fill_default_models(agents)
+        self._fill_all_defaults(agents)
         result = launch(
             agents,
             backend="bash",

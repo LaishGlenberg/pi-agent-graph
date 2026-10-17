@@ -69,6 +69,7 @@ loader.py            ConfigLoader (pi-cli config discovery + resolution)
 fixtures.py          ScenarioFixture / RoleFixture, save/load, fixture_path
 scenarios.py         Built-in scenario registry
 quoting.py           POSIX / Windows / AppleScript quoting helpers
+resources.py         Agent dir + extension/skill/built-in-tool resolution
 launchers/
   __init__.py        launch(), LaunchOptions, LaunchResult
   validation.py      Preflight checks
@@ -84,17 +85,19 @@ cli.py               Reserved entry point (help only in v1)
 Public API (re-exported from `__init__.py`):
 
 ```python
-Agent, Role, Scenario
+Agent, Role, Scenario, Switch
 ConfigLoader
 ScenarioFixture, RoleFixture
 AgentGraphBuilder
 launch, LaunchOptions, LaunchResult
+resolve_extension, resolve_skill, resolve_extensions, resolve_skills
 ```
 
-**Layering:** `models` and `quoting` depend on nothing internal. `loader` and
-`scenarios` depend on `models`. `fixtures` depends on `errors` only. `launchers`
-depend on `models` + `quoting`. `builder` ties them together. `cli` sits on top
-of `builder`.
+**Layering:** `models` depends on `errors` + `resources`; `resources` depends on
+`errors` only; `quoting` depends on nothing internal. `loader` and `scenarios`
+depend on `models`. `fixtures` depends on `errors` only. `launchers` depend on
+`models` + `quoting`. `builder` ties them together. `cli` sits on top of
+`builder`.
 
 ## 5. Data model (`models.py`)
 
@@ -104,13 +107,21 @@ of `builder`.
 @dataclass
 class Agent:
     role: str
-    base_argv: list[str] = field(default_factory=list)   # executable + pass-through flags
+    base_argv: list[str] = field(default_factory=lambda: ["pi"])  # PI_BIN or "pi"
     name: str | None = None                              # --name; defaults to role
     session_dir: str | None = None                       # --session-dir
     system_prompt: str | None = None                     # --system-prompt
     model: str | None = None                             # --model (optionally model:thinking)
     prompt: str | None = None                            # starting positional prompt
     cwd: str | None = None
+    extensions: list[str] | None = None                  # resolved -e paths
+    skills: list[str] | None = None                      # resolved --skill paths
+    builtin_tools: list[str] | None = None               # -bt allowlist
+    agent_dir: str | None = None                         # override pi's agent dir
+    use_extensions: Switch = field(default_factory=Switch)
+    use_skills: Switch = field(default_factory=Switch)
+    use_tools: Switch = field(default_factory=Switch)
+    use_context: Switch = field(default_factory=Switch)
     model_explicit: bool = False                         # model chosen in Python, not from config
 ```
 
@@ -136,6 +147,12 @@ pi-cli default rather than a Python choice.
 - `set_prompt(text)`
 - `set_cwd(path)` — the directory the agent starts in
 - `set_dir(path)` — alias for `set_cwd`
+- `set_extensions(*names, agent_dir=None)` — resolve names/paths and load
+  exactly those (`-ne` + `--extension`)
+- `set_skills(*names, agent_dir=None)` — resolve names/paths and load exactly
+  those (`-ns` + `--skill`)
+- `set_tools(*names)` — keep only these built-in tools, disabling the rest via
+  `--exclude-tools` (pi-cli's `-bt` semantics; extension tools stay enabled)
 - `set_option(flag, value)` — replaces `flag` inside `base_argv` if present,
   else appends; used for arbitrary pass-through flags. Managed flags (including
   `--model`) route to their field instead.
@@ -163,6 +180,18 @@ pi-cli command (`model_explicit = False`) < a builder-wide
 `AgentGraphBuilder.set_model(...)` default < a per-agent
 `Agent.set_model(...)` (`model_explicit = True`). An agent with no model at any
 level runs on pi's default; `AgentGraphBuilder.start()` warns about it.
+
+**Resource precedence.** Extensions, skills, and tools follow the same order:
+config < builder < per-agent. A Python choice strips that family's flags from
+`base_argv` before emitting its own, so a command never carries two `-ne`/
+`--extension` (or `-ns`/`--skill`, or `--exclude-tools`) sets. Families not
+chosen in Python keep the saved config's flags. `set_extensions("")`,
+`set_skills("")`, and `set_tools("")` mean "disabled" and emit `-ne`, `-ns`,
+and `-nbt` respectively.
+
+The `use_extensions`, `use_skills`, `use_tools`, and `use_context` switches have
+`set(bool)` and `get()`; `.set(False)` emits `-ne`, `-ns`, `-nbt`, or `-nc`,
+while `.set(True)` removes a config disable flag (a no-op when none was set).
 
 ### 5.2 `Role`
 
@@ -442,6 +471,11 @@ class AgentGraphBuilder:
     def set_shared_context(self, text: str) -> None: ...
     def set_model(self, model: str, thinking: str | None = None) -> None: ...
 
+    def set_extensions(self, *names: str, agent_dir: str | Path | None = None) -> None: ...
+    def set_skills(self, *names: str, agent_dir: str | Path | None = None) -> None: ...
+    def set_tools(self, *names: str) -> None: ...
+    # Builder-level switches: use_extensions, use_skills, use_tools, use_context
+
     def list_scenarios(self) -> list[str]: ...
     def get_scenario(self, key: str) -> ScenarioBuilder: ...
 
@@ -481,8 +515,9 @@ the point of the library). If a `Role.config` is set — or a fixture role
 supplies one — it resolves that config into `base_argv` via
 `builder.get_agent_loader()`, which uses an injected loader or lazily creates
 the default one. Otherwise the caller sets it with `loader.get(...)` +
-`agent.set_command(...)`. A builder default model fills in any agent that has
-not chosen one (see the model precedence above).
+`agent.set_command(...)`, or uses the default `pi` command directly. A builder
+default model or resource fills in any agent that has not chosen one (see the
+precedence rules above).
 
 `start()` is a thin wrapper: it fills default models, prints a yellow warning
 for every agent that will fall back to pi's default model, then calls

@@ -37,6 +37,10 @@ def test_every_error_class_is_enumerated():
         "FixtureError",
         "FixtureNotFoundError",
         "FixtureFormatError",
+        "ResourceError",
+        "ResourceNotFoundError",
+        "AmbiguousResourceError",
+        "UnknownToolError",
     ):
         assert getattr(errors, name) in ERROR_CODES
 
@@ -54,6 +58,10 @@ def test_every_error_class_is_enumerated():
         (errors.FixtureError("x"), ErrorCode.FIXTURE),
         (errors.FixtureNotFoundError("x"), ErrorCode.FIXTURE_NOT_FOUND),
         (errors.FixtureFormatError("x"), ErrorCode.FIXTURE_FORMAT),
+        (errors.ResourceError("x"), ErrorCode.RESOURCE),
+        (errors.ResourceNotFoundError("x"), ErrorCode.RESOURCE_NOT_FOUND),
+        (errors.AmbiguousResourceError("x"), ErrorCode.RESOURCE_AMBIGUOUS),
+        (errors.UnknownToolError("x"), ErrorCode.UNKNOWN_TOOL),
         (errors.PiAgentGraphError("x"), ErrorCode.UNKNOWN),
     ],
 )
