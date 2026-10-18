@@ -12,7 +12,7 @@ from .bash import BashBackend
 from .ordering import order_agents
 from .print import PrintBackend
 from .terminal import TerminalBackend
-from .types import LAYOUTS, TMUX_LAYOUTS, LaunchOptions, LaunchResult
+from .types import LAYOUTS, TMUX_LAYOUTS, LaunchOptions, LaunchResult, LayoutName
 from .validation import BANNED_FLAGS, KNOWN_BACKENDS, validate
 
 
@@ -80,6 +80,7 @@ __all__ = [
     "TMUX_LAYOUTS",
     "LaunchOptions",
     "LaunchResult",
+    "LayoutName",
     "launch",
     "new_run_id",
     "order_agents",

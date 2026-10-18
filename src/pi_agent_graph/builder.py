@@ -9,7 +9,7 @@ from typing import Any
 
 from . import diagnostics, fixtures
 from .errors import FixtureFormatError
-from .launchers import LaunchOptions, LaunchResult, launch
+from .launchers import LaunchOptions, LaunchResult, LayoutName, launch
 from .loader import ConfigLoader
 from .models import Agent, Role, Scenario, Switch
 from .resources import (
@@ -51,22 +51,19 @@ def _with_overrides(
     options: LaunchOptions | None,
     *,
     cwd: str | None = None,
-    layout: str | None = None,
-    tmux_layout: str | None = None,
+    layout: LayoutName | None = None,
 ) -> LaunchOptions | None:
     """Return *options* with bare-argument overrides applied.
 
-    ``cwd``, ``layout``, and ``tmux_layout`` override any value already in
-    *options*. A fresh ``LaunchOptions`` is built only when needed, so a
-    caller's options object is never mutated.
+    ``cwd`` and ``layout`` override any value already in *options*. A fresh
+    ``LaunchOptions`` is built only when needed, so a caller's options object
+    is never mutated.
     """
     overrides: dict[str, Any] = {}
     if cwd is not None:
         overrides["cwd"] = cwd
     if layout is not None:
         overrides["layout"] = layout
-    if tmux_layout is not None:
-        overrides["tmux_layout"] = tmux_layout
     if not overrides:
         return options
     return replace(options or LaunchOptions(), **overrides)
@@ -379,28 +376,25 @@ class AgentGraphBuilder:
         backend: str | None = None,
         options: LaunchOptions | None = None,
         cwd: str | None = None,
-        layout: str | None = None,
-        tmux_layout: str | None = None,
+        layout: LayoutName | None = None,
     ) -> LaunchResult:
         """Launch *agents*, optionally starting each one in *cwd*.
 
         ``cwd`` applies to every agent that does not already have its own
         working directory set (see :meth:`Agent.set_cwd`), so per-agent values
-        win. ``layout`` overrides ``options.layout`` and picks the terminal
-        same-window layout (``"window"``, ``"tab"``, or ``"split"``);
-        ``tmux_layout`` overrides ``options.tmux_layout`` and names the tmux
-        window layout (``"tiled"``, ``"even-horizontal"``, ...) used by
-        ``layout="split"``. Agents with no model fall back to pi's default and
-        are warned about before launch.
+        win. ``layout`` overrides ``options.layout`` and picks how the roster
+        is arranged: ``"window"`` (one OS window each, the default),
+        ``"tab"`` (a tmux window each), or ``"split"`` / a named tmux layout
+        (``"tiled"``, ``"even-horizontal"``, ...) to tile agents as panes.
+        Agents with no model fall back to pi's default and are warned about
+        before launch.
         """
         self._fill_all_defaults(agents)
         diagnostics.emit_warnings(diagnostics.collect_warnings(agents))
         return launch(
             agents,
             backend=backend,
-            options=_with_overrides(
-                options, cwd=cwd, layout=layout, tmux_layout=tmux_layout
-            ),
+            options=_with_overrides(options, cwd=cwd, layout=layout),
         )
 
     def start_dry(
@@ -409,17 +403,14 @@ class AgentGraphBuilder:
         *,
         options: LaunchOptions | None = None,
         cwd: str | None = None,
-        layout: str | None = None,
-        tmux_layout: str | None = None,
+        layout: LayoutName | None = None,
     ) -> LaunchResult:
         """Print the commands :meth:`start` would run, without launching."""
         self._fill_all_defaults(agents)
         return launch(
             agents,
             backend="print",
-            options=_with_overrides(
-                options, cwd=cwd, layout=layout, tmux_layout=tmux_layout
-            ),
+            options=_with_overrides(options, cwd=cwd, layout=layout),
         )
 
     def display_command(self, agents: list[Agent]) -> str:

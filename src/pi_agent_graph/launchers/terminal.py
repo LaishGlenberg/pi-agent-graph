@@ -447,6 +447,11 @@ class TerminalBackend:
     ) -> LaunchResult:
         """Open one terminal window holding a tmux tab/pane per agent."""
         layout = options.layout
+        # ``tab`` adds tmux windows; every other multiplexed value (``split``
+        # and the tmux layout names) tiles panes, with the layout name itself
+        # arranging them. ``split`` is the plain ``tiled`` alias.
+        mode = "tab" if layout == "tab" else "split"
+        pane_layout = "tiled" if layout in ("tab", "split") else layout
         entries = [
             (agent.name or agent.role, cmd, agent.cwd)
             for agent, cmd in zip(agents, commands)
@@ -454,9 +459,7 @@ class TerminalBackend:
         if os.environ.get("TMUX"):
             # Already inside tmux: add windows/panes to the current session.
             script = write_temp_script(
-                tmux_current_script(
-                    entries, layout=layout, pane_layout=options.tmux_layout
-                ),
+                tmux_current_script(entries, layout=mode, pane_layout=pane_layout),
                 suffix=".sh",
             )
             pid = self._spawn(["bash", str(script)], cwd=None, env=env)
@@ -470,8 +473,8 @@ class TerminalBackend:
                 tmux_session_script(
                     entries,
                     session=run_id,
-                    layout=layout,
-                    pane_layout=options.tmux_layout,
+                    layout=mode,
+                    pane_layout=pane_layout,
                 ),
                 suffix=".sh",
             )

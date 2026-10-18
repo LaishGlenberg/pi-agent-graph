@@ -505,39 +505,43 @@ def _spawned_script(calls: list[list[str]]) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_backend_split_uses_configured_tmux_layout(monkeypatch):
+def test_backend_tmux_layout_name_selects_split_with_that_layout(monkeypatch):
     monkeypatch.delenv("TMUX", raising=False)
     RecordingPopen.calls = []
     backend = TerminalBackend(which=which_many("xterm", "tmux"), popen=RecordingPopen)
     backend.launch(
         [make("planner"), make("worker")],
-        LaunchOptions(
-            run_id="r1",
-            platform="linux",
-            layout="split",
-            tmux_layout="even-horizontal",
-        ),
+        LaunchOptions(run_id="r1", platform="linux", layout="even-horizontal"),
         "r1",
     )
     text = _spawned_script(RecordingPopen.calls)
+    assert "split-window" in text
     assert "even-horizontal" in text
     assert "tiled" not in text
 
 
-def test_backend_current_session_split_uses_tmux_layout(monkeypatch):
+def test_backend_split_alias_arranges_tiled(monkeypatch):
+    monkeypatch.delenv("TMUX", raising=False)
+    RecordingPopen.calls = []
+    backend = TerminalBackend(which=which_many("xterm", "tmux"), popen=RecordingPopen)
+    backend.launch(
+        [make("planner"), make("worker")],
+        LaunchOptions(run_id="r1", platform="linux", layout="split"),
+        "r1",
+    )
+    assert "tiled" in _spawned_script(RecordingPopen.calls)
+
+
+def test_backend_current_session_uses_tmux_layout(monkeypatch):
     monkeypatch.setenv("TMUX", "1")
     RecordingPopen.calls = []
     backend = TerminalBackend(which=lambda name: None, popen=RecordingPopen)
     backend.launch(
         [make("planner"), make("worker")],
-        LaunchOptions(
-            run_id="r1",
-            platform="linux",
-            layout="split",
-            tmux_layout="even-vertical",
-        ),
+        LaunchOptions(run_id="r1", platform="linux", layout="even-vertical"),
         "r1",
     )
     text = Path(RecordingPopen.calls[0][1]).read_text(encoding="utf-8")
     assert "even-vertical" in text
     assert "tiled" not in text
+    assert "-L" not in text

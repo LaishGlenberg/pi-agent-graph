@@ -37,7 +37,7 @@ from .fixtures import (
     load_fixture,
     save_fixture,
 )
-from .launchers import LaunchOptions, LaunchResult, launch
+from .launchers import LaunchOptions, LaunchResult, LayoutName, launch
 from .loader import ConfigLoader, parse_dry_run
 from .models import Agent, Role, Scenario, Switch
 from .resources import (
@@ -73,6 +73,7 @@ __all__ = [
     "LaunchError",
     "LaunchOptions",
     "LaunchResult",
+    "LayoutName",
     "PiAgentGraphError",
     "PiCliNotFoundError",
     "ResourceError",

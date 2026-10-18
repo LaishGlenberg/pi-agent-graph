@@ -25,6 +25,7 @@ def test_exports_present():
         "ErrorCode",
         "LaunchOptions",
         "LaunchResult",
+        "LayoutName",
         "WarningCode",
         "collect_warnings",
         "emit_warnings",

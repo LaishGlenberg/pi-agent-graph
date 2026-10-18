@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 
 from pi_agent_graph.errors import ValidationError
-from pi_agent_graph.launchers.types import TMUX_LAYOUTS, LaunchOptions
+from pi_agent_graph.launchers.types import (
+    LAYOUTS,
+    TMUX_LAYOUTS,
+    LaunchOptions,
+)
 from pi_agent_graph.launchers.validation import (
     BANNED_FLAGS,
     KNOWN_BACKENDS,
@@ -88,9 +92,13 @@ def test_bash_with_path_passes():
     validate([make()], "bash", opts(bash_path="/tmp/x.sh"))
 
 
-@pytest.mark.parametrize("layout", ["tab", "split"])
+@pytest.mark.parametrize("layout", [name for name in LAYOUTS if name != "window"])
 def test_linux_layouts_accepted(layout):
     validate([make()], "terminal", opts(layout=layout, platform="linux"))
+
+
+def test_layouts_are_modes_plus_tmux_layouts():
+    assert LAYOUTS == ("window", "tab", "split", *TMUX_LAYOUTS)
 
 
 def test_unknown_layout_rejected():
@@ -100,21 +108,11 @@ def test_unknown_layout_rejected():
 
 
 @pytest.mark.parametrize("platform", ["darwin", "win32"])
-def test_non_linux_layout_rejected(platform):
+@pytest.mark.parametrize("layout", ["tab", "split", *TMUX_LAYOUTS])
+def test_non_linux_layout_rejected(platform, layout):
     with pytest.raises(ValidationError) as exc:
-        validate([make()], "terminal", opts(layout="split", platform=platform))
+        validate([make()], "terminal", opts(layout=layout, platform=platform))
     assert "only supported on Linux" in str(exc.value)
-
-
-@pytest.mark.parametrize("pane_layout", TMUX_LAYOUTS)
-def test_tmux_layouts_accepted(pane_layout):
-    validate([make()], "terminal", opts(layout="split", tmux_layout=pane_layout))
-
-
-def test_unknown_tmux_layout_rejected():
-    with pytest.raises(ValidationError) as exc:
-        validate([make()], "terminal", opts(layout="split", tmux_layout="grid"))
-    assert "unknown tmux_layout" in str(exc.value)
 
 
 def test_multiple_errors_are_aggregated():

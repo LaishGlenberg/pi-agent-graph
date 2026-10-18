@@ -260,16 +260,13 @@ setup.
 
 On Linux, `builder.start(agents, layout=...)` (or `LaunchOptions(layout=...)`)
 can put the whole roster in one window instead of one window per agent: `"tab"`
-gives each agent a tmux tab, and `"split"` tiles them as tmux panes. Inside
-`tmux` the tabs/panes are added to the current session; otherwise one emulator
-window opens on a dedicated tmux server. The default, `"window"`, is
-unchanged. Other platforms only support `"window"`.
-
-For `"split"`, `tmux_layout` names the tmux window layout
-(`"tiled"` default, plus `"even-horizontal"`, `"even-vertical"`,
-`"main-horizontal"`, `"main-vertical"`), e.g.
-`builder.start(agents, layout="split", tmux_layout="even-horizontal")` for a
-side-by-side pair.
+gives each agent a tmux tab, while `"split"` / a named tmux layout tiles them
+as tmux panes. The layout names are `tiled` (the `"split"` alias),
+`even-horizontal`, `even-vertical`, `main-horizontal`, and `main-vertical`;
+so `builder.start(agents, layout="even-horizontal")` puts a pair side by side.
+Inside `tmux` the tabs/panes are added to the current session; otherwise one
+emulator window opens on a dedicated tmux server. The default, `"window"`, is
+unchanged, and every other layout requires Linux.
 
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
 

@@ -30,6 +30,7 @@ def test_list_scenarios():
         "checklist_iteration",
         "subagent_scouting",
         "scout_worker_planner",
+        "testing",
     }
 
 
@@ -406,15 +407,9 @@ def test_start_dry_accepts_layout(monkeypatch):
     assert launcher.last.options.layout == "split"
 
 
-def test_start_tmux_layout_kwarg_overrides_options(monkeypatch):
+def test_start_accepts_tmux_layout_name(monkeypatch):
     launcher = FakeLauncher()
     launcher.install(monkeypatch)
     builder = AgentGraphBuilder()
-    builder.start(
-        _ready_agents(builder),
-        backend="print",
-        options=LaunchOptions(layout="split", tmux_layout="tiled"),
-        layout="split",
-        tmux_layout="even-horizontal",
-    )
-    assert launcher.last.options.tmux_layout == "even-horizontal"
+    builder.start(_ready_agents(builder), backend="print", layout="even-horizontal")
+    assert launcher.last.options.layout == "even-horizontal"
