@@ -37,6 +37,11 @@ def normalize_windows_args(argv: Sequence[str]) -> list[str]:
     return [_NEWLINE_RE.sub(" ", token) for token in argv]
 
 
+def keep_open_command(cmd: Sequence[str]) -> str:
+    """Render *cmd* as a POSIX shell string that then keeps a shell open."""
+    return f"{join_posix(cmd)}; exec $SHELL"
+
+
 LINUX_EMULATORS: tuple[str, ...] = (
     "wt",
     "gnome-terminal",
@@ -46,6 +51,13 @@ LINUX_EMULATORS: tuple[str, ...] = (
     "alacritty",
     "xterm",
 )
+
+#: tmux server socket for single-window layouts. A dedicated server keeps a
+#: multiplexed run out of the user's default tmux session.
+MULTIPLEXER_SOCKET = "pi-agent-graph"
+
+#: Layouts that multiplex every agent into one terminal window (Linux only).
+MULTIPLEXED_LAYOUTS: tuple[str, ...] = ("tab", "split")
 
 
 # -- pure invocation builders --------------------------------------------
@@ -104,7 +116,7 @@ def linux_emulator_command(
     cwd: str | None = None,
 ) -> list[str]:
     """Build the invocation that opens *emulator* running *cmd*."""
-    keep_open = f"{join_posix(cmd)}; exec $SHELL"
+    keep_open = keep_open_command(cmd)
     cmd = list(cmd)
 
     if emulator == "wt":
@@ -140,6 +152,155 @@ def linux_emulator_command(
         argv += ["-e", "bash", "-lc", f"cd {quote_posix(cwd)} && {keep_open}"]
         return argv
     return [*argv, "-e", "bash", "-lc", keep_open]
+
+
+# -- tmux multiplexing (single-window layouts) ---------------------------
+def _tmux_argv(socket: str | None) -> list[str]:
+    """Base tmux argv, pinned to a dedicated server when *socket* is set."""
+    return ["tmux", "-L", socket] if socket else ["tmux"]
+
+
+def tmux_new_session(
+    session: str,
+    name: str,
+    cmd: Sequence[str],
+    cwd: str | None = None,
+    *,
+    socket: str | None = None,
+) -> list[str]:
+    """Detached tmux session whose first window runs *cmd*."""
+    argv = [*_tmux_argv(socket), "new-session", "-d", "-s", session, "-n", name]
+    if cwd:
+        argv += ["-c", cwd]
+    return [*argv, keep_open_command(cmd)]
+
+
+def tmux_new_window(
+    session: str | None,
+    name: str,
+    cmd: Sequence[str],
+    cwd: str | None = None,
+    *,
+    socket: str | None = None,
+) -> list[str]:
+    """New tmux window (a tab) running *cmd*."""
+    argv = [*_tmux_argv(socket), "new-window"]
+    if session:
+        argv += ["-t", session]
+    argv += ["-n", name]
+    if cwd:
+        argv += ["-c", cwd]
+    return [*argv, keep_open_command(cmd)]
+
+
+def tmux_split_window(
+    session: str | None,
+    cmd: Sequence[str],
+    cwd: str | None = None,
+    *,
+    socket: str | None = None,
+) -> list[str]:
+    """Horizontal tmux split (side-by-side pane) running *cmd*."""
+    argv = [*_tmux_argv(socket), "split-window", "-h"]
+    if session:
+        argv += ["-t", session]
+    if cwd:
+        argv += ["-c", cwd]
+    return [*argv, keep_open_command(cmd)]
+
+
+def tmux_select_pane(
+    session: str | None, title: str, *, socket: str | None = None
+) -> list[str]:
+    """Title the active pane (run immediately after a split)."""
+    argv = [*_tmux_argv(socket), "select-pane"]
+    if session:
+        argv += ["-t", session]
+    return [*argv, "-T", title]
+
+
+def tmux_select_layout(
+    session: str | None, layout: str = "tiled", *, socket: str | None = None
+) -> list[str]:
+    """Rearrange the target window's panes into *layout*."""
+    argv = [*_tmux_argv(socket), "select-layout"]
+    if session:
+        argv += ["-t", session]
+    return [*argv, layout]
+
+
+def tmux_attach(session: str, *, socket: str | None = None) -> list[str]:
+    """Attach command run by the single terminal window."""
+    return [*_tmux_argv(socket), "attach-session", "-t", session]
+
+
+def _render_script(lines: Sequence[str]) -> str:
+    return "\n".join(["#!/usr/bin/env bash", *lines]) + "\n"
+
+
+def _check_layout(layout: str) -> None:
+    if layout not in MULTIPLEXED_LAYOUTS:
+        raise ValueError(f"not a multiplexed layout: {layout!r}")
+
+
+def _layout_lines(
+    entries: Sequence[tuple[str, Sequence[str], str | None]],
+    *,
+    session: str | None,
+    layout: str,
+    socket: str | None,
+) -> list[str]:
+    lines: list[str] = []
+    for name, cmd, cwd in entries:
+        if layout == "tab":
+            lines.append(
+                join_posix(tmux_new_window(session, name, cmd, cwd, socket=socket))
+            )
+        else:
+            lines.append(
+                join_posix(tmux_split_window(session, cmd, cwd, socket=socket))
+            )
+            lines.append(join_posix(tmux_select_pane(session, name, socket=socket)))
+    if layout == "split":
+        lines.append(join_posix(tmux_select_layout(session, socket=socket)))
+    return lines
+
+
+def tmux_session_script(
+    entries: Sequence[tuple[str, Sequence[str], str | None]],
+    *,
+    session: str,
+    layout: str,
+    socket: str | None = MULTIPLEXER_SOCKET,
+) -> str:
+    """Script that builds a detached tmux *session*, then attaches to it.
+
+    *entries* is ``(name, cmd, cwd)`` per agent. ``layout='tab'`` gives each
+    agent its own window; ``layout='split'`` tiles them as panes. The caller
+    runs this in a single terminal window, so every agent shares one window.
+    """
+    _check_layout(layout)
+    if not entries:
+        raise ValueError("tmux_session_script needs at least one entry")
+    name, cmd, cwd = entries[0]
+    lines = [join_posix(tmux_new_session(session, name, cmd, cwd, socket=socket))]
+    lines += _layout_lines(entries[1:], session=session, layout=layout, socket=socket)
+    lines.append(join_posix(tmux_attach(session, socket=socket)))
+    return _render_script(lines)
+
+
+def tmux_current_script(
+    entries: Sequence[tuple[str, Sequence[str], str | None]],
+    *,
+    layout: str,
+) -> str:
+    """Script that adds tabs/panes to the tmux session we are already inside."""
+    _check_layout(layout)
+    if not entries:
+        raise ValueError("tmux_current_script needs at least one entry")
+    return _render_script(
+        _layout_lines(entries, session=None, layout=layout, socket=None)
+    )
 
 
 def macos_osascript_command(cmd: Sequence[str], cwd: str | None = None) -> list[str]:
@@ -223,23 +384,86 @@ class TerminalBackend:
     ) -> LaunchResult:
         platform = options.platform or sys.platform
         env = child_env()
-        commands: list[list[str]] = []
+        commands = [agent.build_argv() for agent in agents]
+        if options.layout != "window" and platform.startswith("linux"):
+            return self._launch_multiplexed(agents, commands, options, run_id, env)
         pids: list[int | None] = []
-        for agent in agents:
-            cmd = agent.build_argv()
-            commands.append(cmd)
+        for agent, cmd in zip(agents, commands):
             invocation = self._invocation(cmd, agent, platform)
-            try:
-                process = self._popen(invocation, cwd=agent.cwd or None, env=env)
-            except OSError as error:
-                raise LaunchError(
-                    f"failed to launch agent {agent.role!r}: {error}"
-                ) from error
-            pids.append(getattr(process, "pid", None))
+            pids.append(
+                self._spawn(invocation, cwd=agent.cwd or None, env=env, role=agent.role)
+            )
         return LaunchResult(
             run_id=run_id,
             backend=self.name,
             commands=commands,
             agents=list(agents),
             pids=pids,
+        )
+
+    def _spawn(
+        self,
+        invocation: list[str],
+        *,
+        cwd: str | None,
+        env: dict[str, str],
+        role: str | None = None,
+    ) -> int | None:
+        try:
+            process = self._popen(invocation, cwd=cwd, env=env)
+        except OSError as error:
+            if role is not None:
+                raise LaunchError(
+                    f"failed to launch agent {role!r}: {error}"
+                ) from error
+            raise LaunchError(f"failed to launch terminal: {error}") from error
+        return getattr(process, "pid", None)
+
+    def _launch_multiplexed(
+        self,
+        agents: list[Agent],
+        commands: list[list[str]],
+        options: LaunchOptions,
+        run_id: str,
+        env: dict[str, str],
+    ) -> LaunchResult:
+        """Open one terminal window holding a tmux tab/pane per agent."""
+        layout = options.layout
+        entries = [
+            (agent.name or agent.role, cmd, agent.cwd)
+            for agent, cmd in zip(agents, commands)
+        ]
+        if os.environ.get("TMUX"):
+            # Already inside tmux: add windows/panes to the current session.
+            script = write_temp_script(
+                tmux_current_script(entries, layout=layout), suffix=".sh"
+            )
+            pid = self._spawn(["bash", str(script)], cwd=None, env=env)
+        else:
+            if not self._which("tmux"):
+                raise LaunchError(
+                    f"layout {layout!r} requires tmux on PATH "
+                    "(install tmux, or use layout='window')"
+                )
+            script = write_temp_script(
+                tmux_session_script(entries, session=run_id, layout=layout),
+                suffix=".sh",
+            )
+            emulator = choose_linux_emulator(self._which)
+            if emulator is None:
+                raise LaunchError(
+                    "no supported terminal emulator found (tried: "
+                    + ", ".join(LINUX_EMULATORS)
+                    + ")"
+                )
+            invocation = linux_emulator_command(emulator, ["bash", str(script)], run_id)
+            pid = self._spawn(invocation, cwd=None, env=env)
+        # One window was opened for the whole roster; only the first agent can
+        # carry a pid, the rest run inside the same process tree.
+        return LaunchResult(
+            run_id=run_id,
+            backend=self.name,
+            commands=commands,
+            agents=list(agents),
+            pids=[pid, *([None] * (len(agents) - 1))],
         )

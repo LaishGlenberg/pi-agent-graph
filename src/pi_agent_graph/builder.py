@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from . import diagnostics, fixtures
 from .errors import FixtureFormatError
@@ -46,17 +47,26 @@ def render_system_prompt(
     )
 
 
-def _with_cwd(options: LaunchOptions | None, cwd: str | None) -> LaunchOptions | None:
-    """Return *options* with ``cwd`` applied, or ``None`` unchanged.
+def _with_overrides(
+    options: LaunchOptions | None,
+    *,
+    cwd: str | None = None,
+    layout: str | None = None,
+) -> LaunchOptions | None:
+    """Return *options* with bare-argument overrides applied.
 
-    ``cwd`` overrides any ``options.cwd``; a fresh ``LaunchOptions`` is built
-    only when needed, so a caller's options object is never mutated.
+    ``cwd`` and ``layout`` override any value already in *options*. A fresh
+    ``LaunchOptions`` is built only when needed, so a caller's options object
+    is never mutated.
     """
-    if cwd is None:
+    overrides: dict[str, Any] = {}
+    if cwd is not None:
+        overrides["cwd"] = cwd
+    if layout is not None:
+        overrides["layout"] = layout
+    if not overrides:
         return options
-    if options is None:
-        return LaunchOptions(cwd=cwd)
-    return replace(options, cwd=cwd)
+    return replace(options or LaunchOptions(), **overrides)
 
 
 class ScenarioBuilder:
@@ -366,20 +376,23 @@ class AgentGraphBuilder:
         backend: str | None = None,
         options: LaunchOptions | None = None,
         cwd: str | None = None,
+        layout: str | None = None,
     ) -> LaunchResult:
         """Launch *agents*, optionally starting each one in *cwd*.
 
         ``cwd`` applies to every agent that does not already have its own
         working directory set (see :meth:`Agent.set_cwd`), so per-agent values
-        win. Agents with no model fall back to pi's default and are warned
-        about before launch.
+        win. ``layout`` overrides ``options.layout`` and picks the terminal
+        same-window layout (``"window"``, ``"tab"``, or ``"split"``). Agents
+        with no model fall back to pi's default and are warned about before
+        launch.
         """
         self._fill_all_defaults(agents)
         diagnostics.emit_warnings(diagnostics.collect_warnings(agents))
         return launch(
             agents,
             backend=backend,
-            options=_with_cwd(options, cwd),
+            options=_with_overrides(options, cwd=cwd, layout=layout),
         )
 
     def start_dry(
@@ -388,13 +401,14 @@ class AgentGraphBuilder:
         *,
         options: LaunchOptions | None = None,
         cwd: str | None = None,
+        layout: str | None = None,
     ) -> LaunchResult:
         """Print the commands :meth:`start` would run, without launching."""
         self._fill_all_defaults(agents)
         return launch(
             agents,
             backend="print",
-            options=_with_cwd(options, cwd),
+            options=_with_overrides(options, cwd=cwd, layout=layout),
         )
 
     def display_command(self, agents: list[Agent]) -> str:
@@ -409,7 +423,7 @@ class AgentGraphBuilder:
         result = launch(
             agents,
             backend="bash",
-            options=_with_cwd(LaunchOptions(bash_path=path), cwd),
+            options=_with_overrides(LaunchOptions(bash_path=path), cwd=cwd),
         )
         assert result.path is not None
         return result.path

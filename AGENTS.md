@@ -93,6 +93,11 @@ in sync with behavior changes.
 - **Responders launch before prompt-bearers.** The agent holding the starting
   prompt starts last so it never races its peers. Order is otherwise the input
   order; do not re-sort beyond this rule.
+- **Same-window layouts are tmux-only and Linux-only.** `LaunchOptions.layout`
+  (`window` default, `tab`, `split`), also exposed as `start(..., layout=...)`
+  sugar that overrides it, multiplexes the roster through tmux; scripts come
+  from the pure `tmux_*` builders in `terminal.py`, and preflight rejects
+  `tab`/`split` off Linux.
 - **Never mutate the user's pi-cli config.** Resolve commands with
   `pi-cli --dry-run -i <name>` and pin `PI_CLI_CONFIG` to the resolved file.
   Do not use `pi-cli -p/--path` (it writes a `path` pointer).
@@ -103,6 +108,13 @@ in sync with behavior changes.
   never parsed as a flag.
 - **Do not add new e2e tests without the user's permission.** Manual e2e runs
   live under `examples/` and are run by hand.
+
+## Style
+
+- **No implicit string concatenation.** Write prose and prompt text as one
+  plain string literal per value; do not split it across parenthesized adjacent
+  literals (`"a " "b"`) to fit the line length. Ruff does not flag it and it
+  makes the text harder to read and edit.
 
 ## Testing
 

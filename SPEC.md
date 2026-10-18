@@ -292,6 +292,7 @@ SCENARIOS: dict[str, Scenario] = {
     "checklist_iteration": Scenario(...),
     "subagent_scouting": Scenario(...),
     "scout_worker_planner": Scenario(...),
+    "testing": Scenario(...),
 }
 ```
 
@@ -304,6 +305,8 @@ The built-in scenarios (role prompts are the seed text; full text lives in code)
   so the worker's own context stays clean. Roles: `worker`, `scout`.
 - **`scout_worker_planner`** — planner orchestrates, worker edits, scout gathers;
   the planner's context stays small. Roles: `planner`, `worker`, `scout`.
+- **`testing`** — disposable roster for smoke tests; the agents only greet and
+  echo over intercom. Roles: `planner`, `worker`.
 
 ## 8. Prompt templating
 
@@ -351,6 +354,7 @@ class LaunchOptions:
     cwd: str | None = None
     bash_path: str | None = None    # required for backend="bash"
     platform: str | None = None     # override for bash/terminal target (tests)
+    layout: str = "window"          # terminal: window | tab | split (Linux only)
 ```
 
 ### 9.2 Preflight validation (before anything launches)
@@ -362,6 +366,8 @@ Fail with a single `ValidationError` listing **all** problems:
 3. No ambiguous short flags are present in `base_argv`: reject exact `-p`,
    exact `-n`, and `--print`. (`-ne`, `-ns`, `-nbt`, `-np`, `-nc` are fine.)
 4. `backend` is known; for `bash`, `bash_path` is set.
+5. `layout` is one of `window`/`tab`/`split`; anything but `window` requires
+   Linux.
 
 Nothing is launched unless all checks pass. Never half-launch a roster.
 
@@ -463,6 +469,21 @@ osascript -e 'tell application "Terminal" to do script "<quoted>"' \
    `bash -lc '<cmd>; exec $SHELL'` so the window stays open.
 3. If none is found, raise `LaunchError` naming the attempted emulators.
 
+**Same-window layouts (Linux only)**
+
+`LaunchOptions.layout` defaults to `"window"` (the behavior above). `"tab"`
+and `"split"` multiplex the roster through tmux so every agent shares one
+window: `"tab"` gives each agent its own tmux window, `"split"` tiles them as
+horizontal panes (`split-window -h`, then `select-layout tiled`).
+
+Inside tmux the windows/panes are added to the current session. Outside tmux,
+a single emulator window runs a generated script that builds a detached
+session on the dedicated server socket `pi-agent-graph` and attaches to it. A
+missing `tmux` raises `LaunchError`; non-Linux platforms reject the layout in
+preflight. The generated script is composed from pure builders
+(`tmux_new_session`, `tmux_new_window`, `tmux_split_window`, ...) that are the
+unit-test surface.
+
 All backends respect `agent.cwd`.
 
 ## 11. Quoting (`quoting.py`)
@@ -506,10 +527,12 @@ class AgentGraphBuilder:
     def get_agent_loader(self, path: str | None = None) -> ConfigLoader: ...
     def start(self, agents: list[Agent], *, backend="terminal",
               options: LaunchOptions | None = None,
-              cwd: str | None = None) -> LaunchResult: ...
+              cwd: str | None = None,
+              layout: str | None = None) -> LaunchResult: ...
     def start_dry(self, agents: list[Agent], *,
                   options: LaunchOptions | None = None,
-                  cwd: str | None = None) -> LaunchResult: ...
+                  cwd: str | None = None,
+                  layout: str | None = None) -> LaunchResult: ...
     def display_command(self, agents: list[Agent]) -> str: ...
     def save_bash(self, agents: list[Agent], path: str, *,
                   cwd: str | None = None) -> str: ...
@@ -537,7 +560,9 @@ precedence rules above).
 `start()` is a thin wrapper: it fills default models, prints a yellow warning
 for every agent that will fall back to pi's default model, then calls
 `launch(agents, backend=..., options=...)`. `start_dry()` and `save_bash()`
-fill default models too, but do not warn. `display_command()` fills defaults and
+fill default models too, but do not warn. `cwd` and `layout` are bare-argument
+sugar that override `options.cwd` / `options.layout` via `_with_overrides()`
+(never mutating the caller's object). `display_command()` fills defaults and
 returns one readable command line per agent, joined by newlines (no launch
 script or terminal wrapper).
 

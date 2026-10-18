@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+
 from ..errors import ValidationError
 from ..models import Agent
-from .types import LaunchOptions
+from .types import LAYOUTS, LaunchOptions
 
 #: Flags that are ambiguous between ``pi`` and ``pi-cli`` (or that would make a
 #: session non-interactive). Generated commands must use the long form.
@@ -44,6 +46,15 @@ def validate(agents: list[Agent], backend: str, options: LaunchOptions) -> None:
 
     if backend == "bash" and not options.bash_path:
         errors.append("backend 'bash' requires options.bash_path")
+
+    if options.layout not in LAYOUTS:
+        errors.append(
+            f"unknown layout {options.layout!r} (known: {', '.join(LAYOUTS)})"
+        )
+    elif options.layout != "window":
+        platform = options.platform or sys.platform
+        if not platform.startswith("linux"):
+            errors.append(f"layout {options.layout!r} is only supported on Linux")
 
     if errors:
         raise ValidationError("preflight failed:\n- " + "\n- ".join(errors))

@@ -88,6 +88,24 @@ def test_bash_with_path_passes():
     validate([make()], "bash", opts(bash_path="/tmp/x.sh"))
 
 
+@pytest.mark.parametrize("layout", ["tab", "split"])
+def test_linux_layouts_accepted(layout):
+    validate([make()], "terminal", opts(layout=layout, platform="linux"))
+
+
+def test_unknown_layout_rejected():
+    with pytest.raises(ValidationError) as exc:
+        validate([make()], "terminal", opts(layout="grid"))
+    assert "unknown layout" in str(exc.value)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_non_linux_layout_rejected(platform):
+    with pytest.raises(ValidationError) as exc:
+        validate([make()], "terminal", opts(layout="split", platform=platform))
+    assert "only supported on Linux" in str(exc.value)
+
+
 def test_multiple_errors_are_aggregated():
     with pytest.raises(ValidationError) as exc:
         validate(

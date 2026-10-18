@@ -180,6 +180,7 @@ Scenarios are defined in code (`scenarios.py`) and are meant to be extended.
 | `checklist_iteration` | `planner`, `worker` | Planner writes a grouped checklist; the worker ticks off one group at a time; the planner validates (tests / lint / typecheck) and commits after each group, then hands over the next. |
 | `subagent_scouting` | `worker`, `scout` | The worker asks a fast `scout` to gather codebase context, keeping the worker's own context window clean. |
 | `scout_worker_planner` | `planner`, `worker`, `scout` | The planner orchestrates, the worker edits, the scout gathers — so the planner's context stays small. |
+| `testing` | `planner`, `worker` | Disposable roster for smoke tests; the agents only greet and echo over intercom. |
 
 Each role has a seed description that is combined with your shared goal and
 shared context into the agent's system prompt.
@@ -256,6 +257,13 @@ setup.
 | Windows | A temp `.cmd` is opened with `cmd /k`, via Windows Terminal (`wt`) when present, else `cmd /c start`. This keeps `wt` from splitting system prompts on `;`. |
 | macOS | Terminal.app via `osascript`. |
 | Linux | `tmux` when inside a session, else `wt` → `gnome-terminal` → `konsole` → `xfce4-terminal` → `kitty` → `alacritty` → `xterm`. |
+
+On Linux, `builder.start(agents, layout=...)` (or `LaunchOptions(layout=...)`)
+can put the whole roster in one window instead of one window per agent: `"tab"`
+gives each agent a tmux tab, and `"split"` tiles them as tmux panes. Inside
+`tmux` the tabs/panes are added to the current session; otherwise one emulator
+window opens on a dedicated tmux server. The default, `"window"`, is
+unchanged. Other platforms only support `"window"`.
 
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fakes import FakeLauncher
 
 from pi_agent_graph.builder import (
     AgentGraphBuilder,
@@ -12,6 +13,7 @@ from pi_agent_graph.builder import (
     render_system_prompt,
 )
 from pi_agent_graph.errors import ScenarioNotFoundError
+from pi_agent_graph.launchers import LaunchOptions
 from pi_agent_graph.models import Role, Scenario
 
 
@@ -353,3 +355,52 @@ def test_builder_extensions_replace_saved_config_extensions(tmp_path):
 
     assert "/config-ext" not in argv
     assert str((agent_dir / "extensions" / "own").resolve()) in argv
+
+
+# -- layout kwarg sugar ----------------------------------------------------
+def _ready_agents(builder):
+    agents = builder.get_scenario("checklist_iteration").get_agents()
+    for agent in agents:
+        agent.set_command(["pi", "-ne"])
+    return list(agents)
+
+
+def test_start_layout_kwarg_overrides_options(monkeypatch):
+    launcher = FakeLauncher()
+    launcher.install(monkeypatch)
+    builder = AgentGraphBuilder()
+    builder.start(
+        _ready_agents(builder),
+        backend="print",
+        options=LaunchOptions(layout="window"),
+        layout="split",
+    )
+    assert launcher.last.options.layout == "split"
+
+
+def test_start_layout_kwarg_does_not_mutate_caller_options(monkeypatch):
+    launcher = FakeLauncher()
+    launcher.install(monkeypatch)
+    builder = AgentGraphBuilder()
+    options = LaunchOptions(layout="window")
+    builder.start(
+        _ready_agents(builder), backend="print", options=options, layout="tab"
+    )
+    assert options.layout == "window"
+    assert launcher.last.options.layout == "tab"
+
+
+def test_start_layout_kwarg_alone_builds_options(monkeypatch):
+    launcher = FakeLauncher()
+    launcher.install(monkeypatch)
+    builder = AgentGraphBuilder()
+    builder.start(_ready_agents(builder), backend="print", layout="split")
+    assert launcher.last.options.layout == "split"
+
+
+def test_start_dry_accepts_layout(monkeypatch):
+    launcher = FakeLauncher()
+    launcher.install(monkeypatch)
+    builder = AgentGraphBuilder()
+    builder.start_dry(_ready_agents(builder), layout="split")
+    assert launcher.last.options.layout == "split"

@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 
 from ..models import Agent
 
+#: Same-window layouts for the ``terminal`` backend. ``window`` opens one OS
+#: window per agent (the default); ``tab`` and ``split`` multiplex every agent
+#: into a single window via tmux. Only supported on Linux.
+LAYOUTS: tuple[str, ...] = ("window", "tab", "split")
+
 
 @dataclass
 class LaunchOptions:
@@ -18,6 +23,7 @@ class LaunchOptions:
     cwd: str | None = None
     bash_path: str | None = None
     platform: str | None = None
+    layout: str = "window"
 
 
 @dataclass

@@ -13,6 +13,7 @@ def test_known_scenarios():
         "checklist_iteration",
         "subagent_scouting",
         "scout_worker_planner",
+        "testing",
     }
 
 

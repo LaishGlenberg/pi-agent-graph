@@ -26,9 +26,9 @@ AGENT_MODELS = {
     "worker": MODELS["ds_ds_off"]
 }
 
-SHARED_GOAL = "This is a quick smoke test of your orchestration capabilities, the planner should create a mock plan for a mock problem, and give this to the worker who returns a mock solution. It can be a simple scenario with only a few minor tasks to check off (not multiple groups of tasks like a real feature request). Since this is a mock test you are fully isolated from actual code, you wont have access to any bash tools or actually be able to commit/test anything, all of this can just be mocked textually in the chat area. DO NOT add more than 1 task grouping"
-SCENARIO = "checklist_iteration"
-PROMPT = "Start working on the plan and make the checklist, when you're ready tell the worker to get started"
+SHARED_GOAL = "This is a quick smoke test of your orchestration capabilities and to make sure intercom is working, finish execution when the test is over and no errors arose."
+SCENARIO = "testing"
+PROMPT = "Start off the test"
 
 # ================================ BUILD AGENTS ====================================
 
@@ -38,10 +38,8 @@ builder.set_shared_context(SHARED_CONTEXT)
 builder.set_shared_goal(SHARED_GOAL)
 
 agentList = builder.get_scenario(SCENARIO).get_agents()
-loader = builder.get_agent_loader()
 
 for agent in agentList:
-    #agent.set_command(loader.get(AGENT_COMMANDS[agent.get_name()]))
     agent.set_extensions('pi-intercom')
     agent.set_skills('pi-intercom')
     agent.use_tools.set(False)
@@ -52,6 +50,17 @@ for agent in agentList:
 
     print(f"Command [{agent.get_name()}]: {agent.display_command()} \n")
 
+# ------------------ Equivalent To ---------------------
+#
+# builder.set_extensions('pi-intercom')
+# builder.set_skills('pi-intercom')
+# builder.use_tools.set(False)
+# builder.use_context.set(False)
+# builder.set_model("deepseek/deepseek-flash", "off")
+# print(f"Agent Commands:\n{builder.display_command()}\n")
+#
+# ------------------------------------------------------
+
 planner, worker = agentList
 
 planner.set_prompt(PROMPT)
@@ -60,4 +69,4 @@ planner.set_prompt(PROMPT)
 # Start both agents in the repo root so they find the files they need.
 repo_root = Path(__file__).resolve().parents[1]
 
-builder.start([planner, worker], cwd=str(repo_root))
+builder.start([planner, worker], cwd=str(repo_root), layout="split")
