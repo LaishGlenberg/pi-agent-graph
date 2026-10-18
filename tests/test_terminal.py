@@ -269,6 +269,24 @@ def test_tmux_session_script_split_tiles_panes():
     assert "attach-session" in script
 
 
+def test_tmux_session_script_honors_pane_layout():
+    script = tmux_session_script(
+        ENTRIES,
+        session="run1",
+        layout="split",
+        pane_layout="even-horizontal",
+        socket=None,
+    )
+    assert "even-horizontal" in script
+    assert "tiled" not in script
+
+
+def test_tmux_current_script_honors_pane_layout():
+    script = tmux_current_script(ENTRIES, layout="split", pane_layout="main-vertical")
+    assert "main-vertical" in script
+    assert "tiled" not in script
+
+
 def test_tmux_session_script_uses_dedicated_server_by_default():
     script = tmux_session_script(ENTRIES, session="run1", layout="tab")
     assert MULTIPLEXER_SOCKET in script
@@ -480,3 +498,46 @@ def test_backend_layout_requires_tmux_outside_session(monkeypatch):
             "r",
         )
     assert "tmux" in str(exc.value)
+
+
+def _spawned_script(calls: list[list[str]]) -> str:
+    path = Path(shlex.split(calls[0][-1])[1].rstrip(";"))
+    return path.read_text(encoding="utf-8")
+
+
+def test_backend_split_uses_configured_tmux_layout(monkeypatch):
+    monkeypatch.delenv("TMUX", raising=False)
+    RecordingPopen.calls = []
+    backend = TerminalBackend(which=which_many("xterm", "tmux"), popen=RecordingPopen)
+    backend.launch(
+        [make("planner"), make("worker")],
+        LaunchOptions(
+            run_id="r1",
+            platform="linux",
+            layout="split",
+            tmux_layout="even-horizontal",
+        ),
+        "r1",
+    )
+    text = _spawned_script(RecordingPopen.calls)
+    assert "even-horizontal" in text
+    assert "tiled" not in text
+
+
+def test_backend_current_session_split_uses_tmux_layout(monkeypatch):
+    monkeypatch.setenv("TMUX", "1")
+    RecordingPopen.calls = []
+    backend = TerminalBackend(which=lambda name: None, popen=RecordingPopen)
+    backend.launch(
+        [make("planner"), make("worker")],
+        LaunchOptions(
+            run_id="r1",
+            platform="linux",
+            layout="split",
+            tmux_layout="even-vertical",
+        ),
+        "r1",
+    )
+    text = Path(RecordingPopen.calls[0][1]).read_text(encoding="utf-8")
+    assert "even-vertical" in text
+    assert "tiled" not in text

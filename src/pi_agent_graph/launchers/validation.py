@@ -6,7 +6,7 @@ import sys
 
 from ..errors import ValidationError
 from ..models import Agent
-from .types import LAYOUTS, LaunchOptions
+from .types import LAYOUTS, TMUX_LAYOUTS, LaunchOptions
 
 #: Flags that are ambiguous between ``pi`` and ``pi-cli`` (or that would make a
 #: session non-interactive). Generated commands must use the long form.
@@ -55,6 +55,12 @@ def validate(agents: list[Agent], backend: str, options: LaunchOptions) -> None:
         platform = options.platform or sys.platform
         if not platform.startswith("linux"):
             errors.append(f"layout {options.layout!r} is only supported on Linux")
+
+    if options.tmux_layout not in TMUX_LAYOUTS:
+        errors.append(
+            f"unknown tmux_layout {options.tmux_layout!r} "
+            f"(known: {', '.join(TMUX_LAYOUTS)})"
+        )
 
     if errors:
         raise ValidationError("preflight failed:\n- " + "\n- ".join(errors))

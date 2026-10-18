@@ -265,6 +265,12 @@ gives each agent a tmux tab, and `"split"` tiles them as tmux panes. Inside
 window opens on a dedicated tmux server. The default, `"window"`, is
 unchanged. Other platforms only support `"window"`.
 
+For `"split"`, `tmux_layout` names the tmux window layout
+(`"tiled"` default, plus `"even-horizontal"`, `"even-vertical"`,
+`"main-horizontal"`, `"main-vertical"`), e.g.
+`builder.start(agents, layout="split", tmux_layout="even-horizontal")` for a
+side-by-side pair.
+
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
 
 ## Status

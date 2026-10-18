@@ -248,6 +248,7 @@ def _layout_lines(
     *,
     session: str | None,
     layout: str,
+    pane_layout: str,
     socket: str | None,
 ) -> list[str]:
     lines: list[str] = []
@@ -262,7 +263,9 @@ def _layout_lines(
             )
             lines.append(join_posix(tmux_select_pane(session, name, socket=socket)))
     if layout == "split":
-        lines.append(join_posix(tmux_select_layout(session, socket=socket)))
+        lines.append(
+            join_posix(tmux_select_layout(session, pane_layout, socket=socket))
+        )
     return lines
 
 
@@ -271,12 +274,14 @@ def tmux_session_script(
     *,
     session: str,
     layout: str,
+    pane_layout: str = "tiled",
     socket: str | None = MULTIPLEXER_SOCKET,
 ) -> str:
     """Script that builds a detached tmux *session*, then attaches to it.
 
     *entries* is ``(name, cmd, cwd)`` per agent. ``layout='tab'`` gives each
-    agent its own window; ``layout='split'`` tiles them as panes. The caller
+    agent its own window; ``layout='split'`` tiles them as panes using the
+    named tmux *pane_layout* (``tiled``, ``even-horizontal``, ...). The caller
     runs this in a single terminal window, so every agent shares one window.
     """
     _check_layout(layout)
@@ -284,7 +289,13 @@ def tmux_session_script(
         raise ValueError("tmux_session_script needs at least one entry")
     name, cmd, cwd = entries[0]
     lines = [join_posix(tmux_new_session(session, name, cmd, cwd, socket=socket))]
-    lines += _layout_lines(entries[1:], session=session, layout=layout, socket=socket)
+    lines += _layout_lines(
+        entries[1:],
+        session=session,
+        layout=layout,
+        pane_layout=pane_layout,
+        socket=socket,
+    )
     lines.append(join_posix(tmux_attach(session, socket=socket)))
     return _render_script(lines)
 
@@ -293,13 +304,20 @@ def tmux_current_script(
     entries: Sequence[tuple[str, Sequence[str], str | None]],
     *,
     layout: str,
+    pane_layout: str = "tiled",
 ) -> str:
     """Script that adds tabs/panes to the tmux session we are already inside."""
     _check_layout(layout)
     if not entries:
         raise ValueError("tmux_current_script needs at least one entry")
     return _render_script(
-        _layout_lines(entries, session=None, layout=layout, socket=None)
+        _layout_lines(
+            entries,
+            session=None,
+            layout=layout,
+            pane_layout=pane_layout,
+            socket=None,
+        )
     )
 
 
@@ -436,7 +454,10 @@ class TerminalBackend:
         if os.environ.get("TMUX"):
             # Already inside tmux: add windows/panes to the current session.
             script = write_temp_script(
-                tmux_current_script(entries, layout=layout), suffix=".sh"
+                tmux_current_script(
+                    entries, layout=layout, pane_layout=options.tmux_layout
+                ),
+                suffix=".sh",
             )
             pid = self._spawn(["bash", str(script)], cwd=None, env=env)
         else:
@@ -446,7 +467,12 @@ class TerminalBackend:
                     "(install tmux, or use layout='window')"
                 )
             script = write_temp_script(
-                tmux_session_script(entries, session=run_id, layout=layout),
+                tmux_session_script(
+                    entries,
+                    session=run_id,
+                    layout=layout,
+                    pane_layout=options.tmux_layout,
+                ),
                 suffix=".sh",
             )
             emulator = choose_linux_emulator(self._which)

@@ -404,3 +404,17 @@ def test_start_dry_accepts_layout(monkeypatch):
     builder = AgentGraphBuilder()
     builder.start_dry(_ready_agents(builder), layout="split")
     assert launcher.last.options.layout == "split"
+
+
+def test_start_tmux_layout_kwarg_overrides_options(monkeypatch):
+    launcher = FakeLauncher()
+    launcher.install(monkeypatch)
+    builder = AgentGraphBuilder()
+    builder.start(
+        _ready_agents(builder),
+        backend="print",
+        options=LaunchOptions(layout="split", tmux_layout="tiled"),
+        layout="split",
+        tmux_layout="even-horizontal",
+    )
+    assert launcher.last.options.tmux_layout == "even-horizontal"

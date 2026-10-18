@@ -11,6 +11,17 @@ from ..models import Agent
 #: into a single window via tmux. Only supported on Linux.
 LAYOUTS: tuple[str, ...] = ("window", "tab", "split")
 
+#: Named tmux window layouts accepted by ``select-layout``; used only when
+#: ``layout="split"``. Anything else is a preflight error (tmux silently keeps
+#: the current layout for an unknown name, which is easy to miss).
+TMUX_LAYOUTS: tuple[str, ...] = (
+    "even-horizontal",
+    "even-vertical",
+    "main-horizontal",
+    "main-vertical",
+    "tiled",
+)
+
 
 @dataclass
 class LaunchOptions:
@@ -24,6 +35,7 @@ class LaunchOptions:
     bash_path: str | None = None
     platform: str | None = None
     layout: str = "window"
+    tmux_layout: str = "tiled"
 
 
 @dataclass

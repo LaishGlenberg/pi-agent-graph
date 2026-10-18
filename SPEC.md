@@ -355,6 +355,7 @@ class LaunchOptions:
     bash_path: str | None = None    # required for backend="bash"
     platform: str | None = None     # override for bash/terminal target (tests)
     layout: str = "window"          # terminal: window | tab | split (Linux only)
+    tmux_layout: str = "tiled"      # terminal split: tmux window layout name
 ```
 
 ### 9.2 Preflight validation (before anything launches)
@@ -368,6 +369,7 @@ Fail with a single `ValidationError` listing **all** problems:
 4. `backend` is known; for `bash`, `bash_path` is set.
 5. `layout` is one of `window`/`tab`/`split`; anything but `window` requires
    Linux.
+6. `tmux_layout` is a named tmux layout (see `TMUX_LAYOUTS`).
 
 Nothing is launched unless all checks pass. Never half-launch a roster.
 
@@ -474,7 +476,10 @@ osascript -e 'tell application "Terminal" to do script "<quoted>"' \
 `LaunchOptions.layout` defaults to `"window"` (the behavior above). `"tab"`
 and `"split"` multiplex the roster through tmux so every agent shares one
 window: `"tab"` gives each agent its own tmux window, `"split"` tiles them as
-horizontal panes (`split-window -h`, then `select-layout tiled`).
+horizontal panes (`split-window -h`) whose final arrange comes from
+`LaunchOptions.tmux_layout`: a named tmux layout (`"tiled"` by default, or
+`"even-horizontal"`, `"even-vertical"`, `"main-horizontal"`,
+`"main-vertical"`) applied with `select-layout`.
 
 Inside tmux the windows/panes are added to the current session. Outside tmux,
 a single emulator window runs a generated script that builds a detached
@@ -528,11 +533,13 @@ class AgentGraphBuilder:
     def start(self, agents: list[Agent], *, backend="terminal",
               options: LaunchOptions | None = None,
               cwd: str | None = None,
-              layout: str | None = None) -> LaunchResult: ...
+              layout: str | None = None,
+              tmux_layout: str | None = None) -> LaunchResult: ...
     def start_dry(self, agents: list[Agent], *,
                   options: LaunchOptions | None = None,
                   cwd: str | None = None,
-                  layout: str | None = None) -> LaunchResult: ...
+                  layout: str | None = None,
+                  tmux_layout: str | None = None) -> LaunchResult: ...
     def display_command(self, agents: list[Agent]) -> str: ...
     def save_bash(self, agents: list[Agent], path: str, *,
                   cwd: str | None = None) -> str: ...
@@ -560,9 +567,10 @@ precedence rules above).
 `start()` is a thin wrapper: it fills default models, prints a yellow warning
 for every agent that will fall back to pi's default model, then calls
 `launch(agents, backend=..., options=...)`. `start_dry()` and `save_bash()`
-fill default models too, but do not warn. `cwd` and `layout` are bare-argument
-sugar that override `options.cwd` / `options.layout` via `_with_overrides()`
-(never mutating the caller's object). `display_command()` fills defaults and
+fill default models too, but do not warn. `cwd`, `layout`, and `tmux_layout`
+are bare-argument sugar that override `options.cwd` / `options.layout` /
+`options.tmux_layout` via `_with_overrides()` (never mutating the caller's
+object). `display_command()` fills defaults and
 returns one readable command line per agent, joined by newlines (no launch
 script or terminal wrapper).
 

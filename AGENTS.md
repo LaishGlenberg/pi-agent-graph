@@ -97,7 +97,8 @@ in sync with behavior changes.
   (`window` default, `tab`, `split`), also exposed as `start(..., layout=...)`
   sugar that overrides it, multiplexes the roster through tmux; scripts come
   from the pure `tmux_*` builders in `terminal.py`, and preflight rejects
-  `tab`/`split` off Linux.
+  `tab`/`split` off Linux. `LaunchOptions.tmux_layout` (also a `start(...)`
+  kwarg) names the tmux layout used by `split`; it must be in `TMUX_LAYOUTS`.
 - **Never mutate the user's pi-cli config.** Resolve commands with
   `pi-cli --dry-run -i <name>` and pin `PI_CLI_CONFIG` to the resolved file.
   Do not use `pi-cli -p/--path` (it writes a `path` pointer).
