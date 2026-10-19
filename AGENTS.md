@@ -99,7 +99,10 @@ in sync with behavior changes.
   `main-vertical`) to tile agents as tmux panes; `split` is the `tiled` alias.
   `start(..., layout=...)` is sugar that overrides it. Scripts come from the
   pure `tmux_*` builders in `terminal.py`, and preflight rejects every non-
-  `window` layout off Linux.
+  `window` layout off Linux. The detached-server script installs a session-
+  scoped `client-resized` hook re-applying `select-layout` for `tiled`/`even-*`
+  (otherwise tmux pins the later panes on incremental resizes); `main-*` are
+  left unhooked and the inside-tmux path installs no hook at all.
 - **Never mutate the user's pi-cli config.** Resolve commands with
   `pi-cli --dry-run -i <name>` and pin `PI_CLI_CONFIG` to the resolved file.
   Do not use `pi-cli -p/--path` (it writes a `path` pointer).

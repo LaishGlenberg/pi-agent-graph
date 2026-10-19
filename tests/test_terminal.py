@@ -25,6 +25,7 @@ from pi_agent_graph.launchers.terminal import (
     tmux_current_script,
     tmux_new_session,
     tmux_new_window,
+    tmux_resize_hook,
     tmux_select_layout,
     tmux_select_pane,
     tmux_session_script,
@@ -279,6 +280,56 @@ def test_tmux_session_script_honors_pane_layout():
     )
     assert "even-horizontal" in script
     assert "tiled" not in script
+
+
+def test_tmux_resize_hook_targets_the_session():
+    assert tmux_resize_hook("run1", "even-horizontal", socket="s") == [
+        "tmux",
+        "-L",
+        "s",
+        "set-hook",
+        "-t",
+        "run1",
+        "client-resized",
+        "select-layout even-horizontal",
+    ]
+
+
+@pytest.mark.parametrize("pane_layout", ["tiled", "even-horizontal", "even-vertical"])
+def test_tmux_session_script_reapplies_balanced_layouts_on_resize(pane_layout):
+    script = tmux_session_script(
+        ENTRIES,
+        session="run1",
+        layout="split",
+        pane_layout=pane_layout,
+        socket=None,
+    )
+    assert "client-resized" in script
+    assert f"select-layout {pane_layout}" in script
+
+
+@pytest.mark.parametrize("pane_layout", ["main-horizontal", "main-vertical"])
+def test_tmux_session_script_leaves_main_layouts_unhooked(pane_layout):
+    script = tmux_session_script(
+        ENTRIES,
+        session="run1",
+        layout="split",
+        pane_layout=pane_layout,
+        socket=None,
+    )
+    assert "client-resized" not in script
+
+
+def test_tmux_session_script_tab_has_no_resize_hook():
+    script = tmux_session_script(ENTRIES, session="run1", layout="tab", socket=None)
+    assert "client-resized" not in script
+
+
+def test_tmux_current_script_has_no_resize_hook():
+    # Inside the user's own session a session hook would outlive the run.
+    script = tmux_current_script(ENTRIES, layout="split", pane_layout="even-horizontal")
+    assert "client-resized" not in script
+    assert "set-hook" not in script
 
 
 def test_tmux_current_script_honors_pane_layout():

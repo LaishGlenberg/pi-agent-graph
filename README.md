@@ -264,9 +264,11 @@ gives each agent a tmux tab, while `"split"` / a named tmux layout tiles them
 as tmux panes. The layout names are `tiled` (the `"split"` alias),
 `even-horizontal`, `even-vertical`, `main-horizontal`, and `main-vertical`;
 so `builder.start(agents, layout="even-horizontal")` puts a pair side by side.
-Inside `tmux` the tabs/panes are added to the current session; otherwise one
-emulator window opens on a dedicated tmux server. The default, `"window"`, is
-unchanged, and every other layout requires Linux.
+Pane layouts are re-balanced on window resize (via a session-scoped tmux hook)
+so both panes grow together. Inside `tmux` the tabs/panes are added to the
+current session; otherwise one emulator window opens on a dedicated tmux
+server. The default, `"window"`, is unchanged, and every other layout requires
+Linux.
 
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
 

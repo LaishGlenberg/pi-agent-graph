@@ -481,11 +481,15 @@ using the layout name.
 
 Inside tmux the windows/panes are added to the current session. Outside tmux,
 a single emulator window runs a generated script that builds a detached
-session on the dedicated server socket `pi-agent-graph` and attaches to it. A
-missing `tmux` raises `LaunchError`; non-Linux platforms reject the layout in
-preflight. The generated script is composed from pure builders
-(`tmux_new_session`, `tmux_new_window`, `tmux_split_window`, ...) that are the
-unit-test surface.
+session on the dedicated server socket `pi-agent-graph` and attaches to it.
+That script also installs a session-scoped `client-resized` hook re-applying
+`select-layout` for `tiled`/`even-*`, because tmux otherwise pins the later
+panes on incremental window resizes; `main-*` layouts are left unhooked so
+their main pane keeps scaling with the window. The hook is scoped to the run's
+session and never touches other sessions. A missing `tmux` raises `LaunchError`;
+non-Linux platforms reject the layout in preflight. The generated script is
+composed from pure builders (`tmux_new_session`, `tmux_new_window`,
+`tmux_split_window`, ...) that are the unit-test surface.
 
 All backends respect `agent.cwd`.
 

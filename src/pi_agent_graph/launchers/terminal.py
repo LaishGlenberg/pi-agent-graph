@@ -59,6 +59,18 @@ MULTIPLEXER_SOCKET = "pi-agent-graph"
 #: Layouts that multiplex every agent into one terminal window (Linux only).
 MULTIPLEXED_LAYOUTS: tuple[str, ...] = ("tab", "split")
 
+#: Pane layouts that need a ``client-resized`` hook to stay balanced. tmux
+#: applies a named layout once; after that an incremental window resize hands
+#: all the new space to the first pane and pins the rest. Re-applying the
+#: layout on each resize keeps these layouts even. The ``main-*`` layouts are
+#: deliberately excluded: re-applying them snaps the main pane back to tmux's
+#: ``main-pane-height``/``main-pane-width`` instead of scaling with the window.
+RESIZE_HOOK_LAYOUTS: tuple[str, ...] = (
+    "tiled",
+    "even-horizontal",
+    "even-vertical",
+)
+
 
 # -- pure invocation builders --------------------------------------------
 def windows_wt_command(
@@ -234,6 +246,24 @@ def tmux_attach(session: str, *, socket: str | None = None) -> list[str]:
     return [*_tmux_argv(socket), "attach-session", "-t", session]
 
 
+def tmux_resize_hook(
+    session: str, layout: str, *, socket: str | None = None
+) -> list[str]:
+    """Session-scoped hook re-applying *layout* whenever the client resizes.
+
+    Scoped to *session* so it never touches other sessions sharing the server.
+    See :data:`RESIZE_HOOK_LAYOUTS` for why only some layouts need it.
+    """
+    return [
+        *_tmux_argv(socket),
+        "set-hook",
+        "-t",
+        session,
+        "client-resized",
+        f"select-layout {layout}",
+    ]
+
+
 def _render_script(lines: Sequence[str]) -> str:
     return "\n".join(["#!/usr/bin/env bash", *lines]) + "\n"
 
@@ -296,6 +326,8 @@ def tmux_session_script(
         pane_layout=pane_layout,
         socket=socket,
     )
+    if layout == "split" and pane_layout in RESIZE_HOOK_LAYOUTS:
+        lines.append(join_posix(tmux_resize_hook(session, pane_layout, socket=socket)))
     lines.append(join_posix(tmux_attach(session, socket=socket)))
     return _render_script(lines)
 
@@ -306,7 +338,11 @@ def tmux_current_script(
     layout: str,
     pane_layout: str = "tiled",
 ) -> str:
-    """Script that adds tabs/panes to the tmux session we are already inside."""
+    """Script that adds tabs/panes to the tmux session we are already inside.
+
+    Unlike :func:`tmux_session_script` this installs no resize hook: it runs in
+    the user's own session, where a session hook would outlive the run.
+    """
     _check_layout(layout)
     if not entries:
         raise ValueError("tmux_current_script needs at least one entry")
