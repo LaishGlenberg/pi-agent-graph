@@ -1,54 +1,19 @@
 # pi-agent-graph
 
-A small Python library for building and launching **multi-agent pi workflows**.
-
-Describe a roster of agents — a role, a resolved `pi` command, a session name,
-and an optional starting prompt — and `pi-agent-graph` launches each one in its
-own terminal window, where they coordinate over `pi-intercom`.
-
-> **Full design details live in [SPEC.md](./SPEC.md).** This README is the
-> overview; the spec is the source of truth.
-
-## Why
-
-A two- or three-agent pi setup means hand-writing several long
-`pi-cli ...` commands, remembering each agent's role prompt, and getting the
-start-up order right so the agents can actually reach each other. That is
-tedious to set up and easy to get subtly wrong (wrong flags, stale paths,
-a planner that messages a worker that isn't up yet).
-
-`pi-agent-graph` turns that into a declarative roster:
-
-- **Commands come from your config.** Saved agents in
-  `pi-cli`'s `config.json` are resolved by name, so extensions, skills, models,
-  and prompts stay in one place.
-- **Scenarios carry the role prompts.** Pick a workflow, get agents with the
-  right responsibilities already described.
-- **Launch order is handled.** Agents without a prompt start first; the agent
-  holding the starting prompt starts last, so it never races its peers.
-- **It is reproducible.** Every launch can also be emitted as a shell script.
-
-## How it works
-
-1. **Build** — an `AgentGraphBuilder` + a scenario produces `Agent` objects,
-   each with a role, a rendered system prompt, a session name, and (later) a
-   resolved `pi` command.
-2. **Resolve** — a `ConfigLoader` reads `pi-cli`'s saved agents and expands a
-   name into a full `pi` command via `pi-cli --dry-run`, so paths are absolute.
-3. **Launch** — a backend starts each agent. `terminal` opens real windows,
-   `bash` writes a script, `print` is a dry-run/test mode.
+A Python library for building and launching multi-agent pi workflows. Define a
+roster of agents, bind each one to a saved `pi-cli` config or build its command
+in Python, then start them in their own terminals where they coordinate over
+`pi-intercom`. The full design lives in [SPEC.md](./SPEC.md).
 
 ## Install
 
 This project is managed with [uv](https://docs.astral.sh/uv/):
 
 ```bash
+git clone https://github.com/LaishGlenberg/pi-agent-graph.git
+cd pi-agent-graph
 uv sync
 ```
-
-`pi-cli` must be installed and on `PATH` for saved-agent resolution, and at
-least one terminal emulator must be available for the `terminal` backend (see
-[Platform support](#platform-support)).
 
 ## Development
 
@@ -58,118 +23,109 @@ uv run pytest           # run the test suite
 uv run pi-agent-graph   # console entry point (prints help in v1)
 ```
 
-## Manual end-to-end run
-
-`examples/checklist_iteration.py` is a complete usage example: it loads two
-saved `pi-cli` configs, builds the `checklist_iteration` agents, and opens a
-terminal window for each (worker first, planner last).
-
-```bash
-uv run python examples/checklist_iteration.py
-```
-
-It uses the saved configs `plannerv2` and `workerv3`; change those two lines to
-match your own.
-
 ## Quickstart
 
 ```python
+from pathlib import Path
+
 from pi_agent_graph import AgentGraphBuilder
 
 builder = AgentGraphBuilder()
-builder.set_shared_context(
-    "Use pi-intercom to message other agents. "
-    "Never assume another agent can see your output."
-)
-builder.set_shared_goal(
-    "Design a modern, sleek React feature: pick libraries and components."
-)
 
-# Pick a scenario -> agents with role prompts already rendered.
-planner, worker = builder.get_scenario("checklist_iteration").get_agents()
+builder.set_shared_context("always use pi-intercom when you finish your message, don't assume other agents can see your output")
+builder.set_shared_goal("write a simple hello world program as a smoke test for agentic intercom communication")
 
-# Bind each agent to a saved pi-cli config.
-loader = builder.get_agent_loader()  # ~/.config/pi-cli/config.json
-planner.set_command(loader.get("plannerv2"))
-worker.set_command(loader.get("workerv3"))
+agentList = builder.get_scenario("checklist_iteration").get_agents()
 
-planner.set_prompt(
-    "Draft the plan, choose libraries and components, "
-    "then create the checklist and hand off to the worker."
-)
+# builder shares the same methods as the agent class, will apply to ALL agents
+for agent in agentList:
+    agent.set_extensions('pi-intercom')
+    agent.set_skills('pi-intercom')
+    agent.use_tools.set(False)
+    agent.use_context.set(False)
+    agent.set_model("deepseek/deepseek-flash", "low")
+    print(f"Command [{agent.get_name()}]: {agent.display_command()} \n")
 
-# Optional: pick a model. A builder-wide default applies to every agent;
-# a per-agent call overrides it. Neither is required (pi's default is used).
-builder.set_model("opencode-go/mimo-v2.5", "low")
-planner.set_model("opencode-go/mimo-v2.5-pro", "high")
+planner, worker = agentList
+planner.set_prompt("begin working on the plan")
 
-# Start every agent in a workspace. Per-agent overrides win, so
-# `planner.set_dir("C:/work/api")` (or `set_cwd`) takes precedence.
-workspace = "C:/Users/lg/projects/my-app"
+cwd_path = Path(__file__).resolve().parents[1]
 
-# Preview exactly what will run, without opening anything.
-builder.start_dry([planner, worker], cwd=workspace)
-
-# Or return pi-cli-config-style lines (resource names, abbreviated system prompt).
-lines = builder.display_command([planner, worker])
-
-# The worker (no prompt) launches first; the planner launches last.
-result = builder.start([planner, worker], cwd=workspace)
-print(result.commands)  # exact argv per agent, in launch order
-
-# The same flow as a reproducible script.
-builder.save_bash([planner, worker], path="flows/checklist.sh", cwd=workspace)
+# For Windows or Mac users without tmux installed you can only use layout=window,tab or omit it entirely
+builder.start([planner, worker], cwd=str(cwd_path), layout="even-horizontal")
 ```
 
-The lower-level API is importable on its own for custom flows:
+## Python API
+
+`AgentGraphBuilder` builds `Agent`s and launches them. The resource and model
+setters below exist on both classes: on a builder they set defaults, on an agent
+they override that agent. Both replace the matching flags from a saved `pi-cli`
+command, so precedence is agent > builder > config.
+
+### Shared by builder and agent
+
+| Method | Effect |
+| --- | --- |
+| `set_model(model, thinking)` | Model; `thinking` appends `:thinking`. |
+| `set_extensions(*names, agent_dir)` | Extensions. |
+| `set_skills(*names, agent_dir)` | Skills. |
+| `set_tools(*names)` | Built-in keep-list. |
+| `set_exclude_tools(*names)` | Tool exclusions. |
+| `use_extensions` | Switch; `-ne` when false. |
+| `use_skills` | Switch; `-ns` when false. |
+| `use_tools` | Switch; `-nbt` when false. |
+| `use_context` | Switch; `-nc` when false. |
+
+`Switch.set(bool)` flips a family on/off, `.get()` reads it, and `.explicit`
+reports whether Python set it.
+
+### Builder only
+
+| Method | Effect |
+| --- | --- |
+| `set_shared_goal(text)` | Shared goal for every rendered prompt. |
+| `set_shared_context(text)` | Shared context for every rendered prompt. |
+| `list_scenarios()` | Scenario keys. |
+| `get_scenario(key)` | ScenarioBuilder for `key`; `.get_agents()` / `.get(role)`. |
+| `load_saved(identifier, directory, path)` | Load a fixture. |
+| `save_fixture(identifier, scenario, roles, prompts, names, directory, path)` | Save the current goal/context as a fixture. |
+| `get_agent_loader(path)` | `ConfigLoader` for saved commands. |
+| `start(agents, backend, options, cwd, layout)` | Launch a roster. |
+| `start_dry(agents)` | Print the commands without launching. |
+| `display_command(agents)` | Pi-cli-style command lines as one string. |
+| `save_bash(agents, path, cwd)` | Write a runnable `.sh` / `.cmd`. |
+
+### Agent only
+
+| Method | Effect |
+| --- | --- |
+| `set_command(argv)` | Resolved `pi` command; managed flags move into fields. |
+| `set_option(flag, value)` | Any flag, replacing an existing occurrence. |
+| `set_name(name)` | Display name. |
+| `set_session_dir(path)` | Session directory. |
+| `set_system_prompt(text)` | System prompt. |
+| `set_prompt(text)` | Starting prompt. |
+| `set_cwd(path)` / `set_dir(path)` | Working directory; `set_dir` is an alias. |
+| `get_name()` | Display name, defaulting to the role. |
+| `build_argv()` | Assembled argv. |
+| `display_command()` | Readable command line. |
+
+### `launch`
 
 ```python
 from pi_agent_graph import launch
-
-result = launch([planner, worker], backend="print")
+result = launch(agents, backend="print")   # print | bash | terminal
 ```
 
-## Building commands in Python
+`LaunchOptions` holds `backend`, `stagger`, `session_dir`, `run_id`, `cwd`,
+`bash_path`, `platform`, and `layout` (`"window"` default, `"tab"`, or a tmux
+layout — Linux only). `LaunchResult` records `run_id`, `backend`, `commands`,
+`agents`, `pids`, and `path`.
 
-You do not need a saved pi-cli config. Agents default to `PI_BIN` (or `pi`),
-and extension/skill/tool names are resolved with the same search rules pi-cli
-uses:
+### `ConfigLoader`
 
-```python
-agent = builder.get_scenario("checklist_iteration").get_agents()[0]
-agent.set_extensions("pi-intercom, rpiv-todo, rtk")
-agent.set_skills("pi-intercom")
-agent.set_tools("read", "bash")          # pi-cli's -bt semantics
-agent.set_exclude_tools("bash")          # -xt bash; also drops a tool an extension re-registered
-agent.use_context.set(False)             # -> -nc
-```
-
-Python choices replace the matching flags from a saved config; families you do
-not touch keep the config's values. `set_extensions("")` (or
-`use_extensions.set(False)`) disables extensions, and the same pattern applies
-to skills, tools, and context files.
-
-## Model selection
-
-Set a model per agent, or a default for the whole roster. `thinking` is
-appended as pi's `model:thinking` suffix:
-
-```python
-builder.set_model("opencode-go/mimo-v2.5", "low")        # every agent
-planner.set_model("opencode-go/mimo-v2.5-pro", "high")   # planner only
-# -> pi --model opencode-go/mimo-v2.5-pro:high ...
-```
-
-Precedence, lowest to highest:
-
-1. a `--model` carried by the saved pi-cli command;
-2. the builder-wide `set_model(...)` default;
-3. a per-agent `set_model(...)`.
-
-When no model is set at any level, pi uses its own default and `start()` prints
-a yellow warning naming the agents that will fall back. Our rendered system
-prompt always replaces a `--system-prompt` saved in the pi-cli config, because
-building that prompt dynamically is the point of the library.
+`ConfigLoader()` expands a saved `pi-cli` agent name into argv via
+`pi-cli --dry-run`. `list()` returns names and `get(name)` the full argv.
 
 ## Built-in scenarios
 
@@ -185,68 +141,14 @@ Scenarios are defined in code (`scenarios.py`) and are meant to be extended.
 Each role has a seed description that is combined with your shared goal and
 shared context into the agent's system prompt.
 
-## Fixtures
-
-A fixture captures a scenario's tunable pieces — the shared context, the shared
-goal, and each role's pi-cli command name and starting prompt — behind a stable
-`identifier`, so it can be saved to disk and reloaded without re-entering the
-fields by hand.
+## Fixtures and pi-cli configs
 
 ```python
-from pi_agent_graph import AgentGraphBuilder
-
-builder = AgentGraphBuilder()
-
-# Load a saved fixture by identifier; this backfills the builder's shared
-# goal/context and returns a ScenarioBuilder carrying the fixture.
-scenario = builder.load_saved(
-    "checklist_iteration_demo", directory="examples/fixtures"
-)
-planner, worker = scenario.get_agents()  # fixture configs resolved via pi-cli
-
-builder.start([planner, worker], cwd=".")
+builder.load_saved("my_demo", directory="fixtures")   # JSON snapshot of goal/context + role configs
+builder.save_fixture("my_demo", "checklist_iteration", roles={"planner": "plannerv2", "worker": "workerv3"})
 ```
 
-`ScenarioFixture` holds the `identifier`, the `scenario` key, `shared_goal`,
-`shared_context`, and a `roles` mapping of role name to a `RoleFixture` (`config`
-= pi-cli command name, `prompt` = starting prompt, `name` = display name). Save
-the current builder state as a fixture with `builder.save_fixture(...)`:
-
-```python
-builder.set_shared_goal("Design a React feature.")
-path = builder.save_fixture(
-    "my_demo",
-    "checklist_iteration",
-    roles={"planner": "plannerv2", "worker": "workerv3"},
-    prompts={"planner": "Draft the plan."},
-    directory="fixtures",  # default directory is "fixtures"
-)
-```
-
-`fixture_path(identifier, directory=None)` returns
-`<directory or "fixtures">/<identifier>.json`. A saved fixture is plain JSON that
-matches `ScenarioFixture.to_dict()`:
-
-```json
-{
-  "identifier": "checklist_iteration_demo",
-  "scenario": "checklist_iteration",
-  "shared_goal": "Design a React feature.",
-  "shared_context": "Use pi-intercom to message other agents.",
-  "roles": {
-    "planner": {"config": "plannerv2", "prompt": "Draft the plan.", "name": null},
-    "worker": {"config": "workerv3", "prompt": null, "name": null}
-  }
-}
-```
-
-Fixture problems raise `FixtureFormatError` (bad fields, unknown role) or
-`FixtureNotFoundError` (missing file), both under `FixtureError`. A fixture
-`identifier` must be a non-empty string with no path separators (`.`, `..`
-included). A fixture role's `config` is resolved through
-`builder.get_agent_loader()` (injected or lazily created), so
-`load_saved(...).get_agents()` returns ready-to-start agents without extra
-setup.
+`fixture_path` / `load_fixture` / `save_fixture` are the low-level helpers; bad or missing files raise `FixtureFormatError` / `FixtureNotFoundError`. `ConfigLoader` expands a saved `pi-cli` agent into argv via `pi-cli --dry-run`, pinning `PI_CLI_CONFIG` so your config is never touched.
 
 ## Platform support
 
@@ -258,26 +160,5 @@ setup.
 | macOS | Terminal.app via `osascript`. |
 | Linux | `tmux` when inside a session, else `wt` → `gnome-terminal` → `konsole` → `xfce4-terminal` → `kitty` → `alacritty` → `xterm`. |
 
-On Linux, `builder.start(agents, layout=...)` (or `LaunchOptions(layout=...)`)
-can put the whole roster in one window instead of one window per agent: `"tab"`
-gives each agent a tmux tab, while `"split"` / a named tmux layout tiles them
-as tmux panes. The layout names are `tiled` (the `"split"` alias),
-`even-horizontal`, `even-vertical`, `main-horizontal`, and `main-vertical`;
-so `builder.start(agents, layout="even-horizontal")` puts a pair side by side.
-Pane layouts are re-balanced on window resize (via a session-scoped tmux hook)
-so both panes grow together. Inside `tmux` the tabs/panes are added to the
-current session; otherwise one emulator window opens on a dedicated tmux
-server. The default, `"window"`, is unchanged, and every other layout requires
-Linux.
 
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
-
-## Status
-
-v1 is implemented: agent/scenario building, `pi-cli` config resolution, and the
-`print`, `bash`, and `terminal` launch backends, with a comprehensive test
-suite. The design lives in [SPEC.md](./SPEC.md).
-
-Not yet implemented: a user-facing CLI (the entry point prints help), output
-capture, auto-readiness probing beyond launch ordering, and true graph
-(edge/DAG) orchestration.
