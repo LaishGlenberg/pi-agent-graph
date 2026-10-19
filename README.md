@@ -5,6 +5,10 @@ roster of agents, bind each one to a saved `pi-cli` config or build its command
 in Python, then start them in their own terminals where they coordinate over
 `pi-intercom`. The full design lives in [SPEC.md](./SPEC.md).
 
+<p align="center">
+  <img src="docs/assets/agent-demo.gif" alt="pi-agent-graph demo" width="640">
+</p>
+
 ## Install
 
 This project is managed with [uv](https://docs.astral.sh/uv/):

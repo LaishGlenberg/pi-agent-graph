@@ -1,0 +1,27 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Rewrite README links for PyPI
+        run: uv run --no-project python .github/scripts/absolutize_readme.py
+      - name: Build
+        run: uv build
+      - name: Check description renders
+        run: uvx twine check dist/*
+      - name: Publish to PyPI
+        # Requires trusted publishing configured on pypi.org for this repo.
+        run: uv publish --trusted-publishing always

@@ -49,6 +49,7 @@ src/pi_agent_graph/
 tests/             One test module per source module; ~40 tests per area
   fakes.py         FakePiCli + FakeLauncher (no-process integration harness)
 examples/          Manual runnable examples (not part of the test suite)
+.github/scripts/   Release tooling (README link rewriting; not packaged)
 ```
 
 `README.md` is the overview; `SPEC.md` is the design source of truth. Keep both
@@ -144,3 +145,8 @@ in sync with behavior changes.
 This repo uses `main`. Commit implementation and tests together; keep generated
 launch scripts (`flows/`, `.sh`, `.cmd`) out of version control unless
 intentionally added.
+
+## Releasing
+
+Pushing a `v*` tag publishes via `publish.yml`, which rewrites README relative
+targets to absolute URLs against the tag (PyPI has no repository base URL).
