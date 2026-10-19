@@ -1,13 +1,20 @@
 # pi-agent-graph
 
-A Python library for building and launching multi-agent pi workflows. Define a
-roster of agents, bind each one to a saved `pi-cli` config or build its command
-in Python, then start them in their own terminals where they coordinate over
-`pi-intercom`. The full design lives in [SPEC.md](./SPEC.md).
+[![Build Status](https://github.com/LaishGlenberg/pi-agent-graph/workflows/CI/badge.svg)](https://github.com/LaishGlenberg/pi-command-cli/actions)
+[![pypi](https://img.shields.io/badge/pypi-coming%20soon-007ec6.svg?logo=pypi)](https://pypi.org/project/pi-agent-graph/)
+
+
+My peronal take on the perfect agentic framework with Pi coding agent and Python. A basic python API with pre-defined agent scenarios, simply builds a `pi` terminal command and executes it in a new window. Extended support for tmux and displaying sessions side by side but works fine with Windows terminals too.
 
 <p align="center">
   <img src="docs/assets/agent-demo.gif" alt="pi-agent-graph demo" width="640">
 </p>
+
+There are 3 different scenarios to choose from (more to come): **`checklist_iteration`**, **`subagent_scouting`**, and **`scout_worker_planner`**. Each scenario comes with predefined roles for each agent and a shared role/scenario description. This is bundled into each agent's system prompt + whatever you set the `shared_goal` and `shared_context` to be, so each agent starts with a clear understanding of what it needs to do.
+
+The point of this project is to provide a more direct and concrete way to design subagent and orchestration flows with pi coding agent. The builder simply "builds" a pi command with the relevant flags and combined system prompt to create reuseable subagent configurations, the underlying idea is quite simple.
+
+The `builder.start([], layout="split")` and other tmux settings also offer a whole new meaning to this project, by providing a herdr style "multi-agent" pane tmux window where you can see each agent's responses and work. No longer do you need to struggle to wrangle control over your subagents, everything is out in the open with pi-agent-graph.
 
 ## Install
 
