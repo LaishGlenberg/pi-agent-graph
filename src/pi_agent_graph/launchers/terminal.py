@@ -246,6 +246,28 @@ def tmux_attach(session: str, *, socket: str | None = None) -> list[str]:
     return [*_tmux_argv(socket), "attach-session", "-t", session]
 
 
+def tmux_destroy_unattached_hook(
+    session: str, *, socket: str | None = None
+) -> list[str]:
+    """Session hook that tears the session down when its client detaches.
+
+    ``destroy-unattached`` cannot simply be set before the first attach: tmux
+    destroys a session immediately while the option is on and no client is
+    attached, so the freshly created detached session would never attach.
+    Enabling it from ``client-attached`` keeps the detached launch alive until
+    the terminal window attaches, then closing that window (a client detach)
+    kills the session, its panes, and the agents inside them.
+    """
+    return [
+        *_tmux_argv(socket),
+        "set-hook",
+        "-t",
+        session,
+        "client-attached",
+        f"set-option -t {session} destroy-unattached on",
+    ]
+
+
 def tmux_resize_hook(
     session: str, layout: str, *, socket: str | None = None
 ) -> list[str]:
@@ -318,7 +340,10 @@ def tmux_session_script(
     if not entries:
         raise ValueError("tmux_session_script needs at least one entry")
     name, cmd, cwd = entries[0]
-    lines = [join_posix(tmux_new_session(session, name, cmd, cwd, socket=socket))]
+    lines = [
+        join_posix(tmux_new_session(session, name, cmd, cwd, socket=socket)),
+        join_posix(tmux_destroy_unattached_hook(session, socket=socket)),
+    ]
     lines += _layout_lines(
         entries[1:],
         session=session,

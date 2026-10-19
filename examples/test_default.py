@@ -12,7 +12,7 @@ MODELS = {
 
 # ================================ DEFINITIONS ====================================
 # additional context shared by agents, largely stays the same between runs
-SHARED_CONTEXT = "Use pi-intercom to message other agents. NEVER assume another agent can see your output. ALWAYS respond with pi-intercom before ending your response. If you do not do this the other agent will stay waiting on you FOREVER and YOU will be responsible for breaking the entire flow. Use intercom terminal env IDs if there are multiple worker or planner agents"
+SHARED_CONTEXT = "Use pi-intercom to message other agents. NEVER assume another agent can see your output. ALWAYS respond with pi-intercom before ending your response. If you do not do this the other agent will stay waiting on you FOREVER and YOU will be responsible for breaking the entire flow. Use intercom terminal env IDs if there are multiple worker or planner agents. Planner should use intercom ask"
 
 # loads these predefined agents from pi-cli config (optional)
 # AGENT_COMMANDS = {

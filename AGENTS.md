@@ -102,7 +102,12 @@ in sync with behavior changes.
   `window` layout off Linux. The detached-server script installs a session-
   scoped `client-resized` hook re-applying `select-layout` for `tiled`/`even-*`
   (otherwise tmux pins the later panes on incremental resizes); `main-*` are
-  left unhooked and the inside-tmux path installs no hook at all.
+  left unhooked and the inside-tmux path installs no hook at all. It also
+  installs a `client-attached` hook enabling `destroy-unattached`, so closing
+  the window kills the session and its agents rather than leaving them running
+  in the detached server. (`destroy-unattached` must be enabled after the
+  first attach — set before, tmux destroys the freshly created detached
+  session — which is why it rides on the hook.)
 - **Never mutate the user's pi-cli config.** Resolve commands with
   `pi-cli --dry-run -i <name>` and pin `PI_CLI_CONFIG` to the resolved file.
   Do not use `pi-cli -p/--path` (it writes a `path` pointer).

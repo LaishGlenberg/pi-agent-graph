@@ -485,10 +485,12 @@ session on the dedicated server socket `pi-agent-graph` and attaches to it.
 That script also installs a session-scoped `client-resized` hook re-applying
 `select-layout` for `tiled`/`even-*`, because tmux otherwise pins the later
 panes on incremental window resizes; `main-*` layouts are left unhooked so
-their main pane keeps scaling with the window. The hook is scoped to the run's
-session and never touches other sessions. A missing `tmux` raises `LaunchError`;
-non-Linux platforms reject the layout in preflight. The generated script is
-composed from pure builders (`tmux_new_session`, `tmux_new_window`,
+their main pane keeps scaling with the window. A `client-attached` hook enables
+`destroy-unattached`, so closing the window kills the session and its agents
+instead of leaving them running in a detached server. The hooks are scoped to
+the run's session and never touch other sessions. A missing `tmux` raises
+`LaunchError`; non-Linux platforms reject the layout in preflight. The generated
+script is composed from pure builders (`tmux_new_session`, `tmux_new_window`,
 `tmux_split_window`, ...) that are the unit-test surface.
 
 All backends respect `agent.cwd`.

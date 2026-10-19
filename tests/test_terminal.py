@@ -23,6 +23,7 @@ from pi_agent_graph.launchers.terminal import (
     normalize_windows_args,
     tmux_attach,
     tmux_current_script,
+    tmux_destroy_unattached_hook,
     tmux_new_session,
     tmux_new_window,
     tmux_resize_hook,
@@ -250,6 +251,35 @@ def test_tmux_attach_command():
         "-t",
         "run1",
     ]
+
+
+def test_tmux_destroy_unattached_hook_targets_the_session():
+    assert tmux_destroy_unattached_hook("run1", socket="s") == [
+        "tmux",
+        "-L",
+        "s",
+        "set-hook",
+        "-t",
+        "run1",
+        "client-attached",
+        "set-option -t run1 destroy-unattached on",
+    ]
+
+
+def test_tmux_session_script_kills_agents_when_the_window_closes():
+    script = tmux_session_script(ENTRIES, session="run1", layout="tab", socket=None)
+    assert "client-attached" in script
+    assert "set-option -t run1 destroy-unattached on" in script
+    # The hook must be installed before the script blocks on attach, otherwise
+    # the session would already be attached when the option lands.
+    assert script.index("destroy-unattached") < script.index("attach-session")
+
+
+def test_tmux_current_script_never_enables_destroy_unattached():
+    # Inside the user's own session that option would kill their whole server
+    # the first time they detach.
+    script = tmux_current_script(ENTRIES, layout="split")
+    assert "destroy-unattached" not in script
 
 
 def test_tmux_session_script_tab_uses_windows():
