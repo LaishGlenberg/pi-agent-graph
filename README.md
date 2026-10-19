@@ -1,6 +1,6 @@
 # pi-agent-graph
 
-[![Build Status](https://github.com/LaishGlenberg/pi-agent-graph/workflows/CI/badge.svg)](https://github.com/LaishGlenberg/pi-command-cli/actions)
+[![Build Status](https://github.com/LaishGlenberg/pi-agent-graph/workflows/CI/badge.svg)](https://github.com/LaishGlenberg/pi-agent-graph/actions)
 [![pypi](https://img.shields.io/badge/pypi-coming%20soon-007ec6.svg?logo=pypi)](https://pypi.org/project/pi-agent-graph/)
 
 
