@@ -3,6 +3,8 @@ name = "pi-agent-graph"
 version = "0.1.0"
 description = "Build and launch multi-agent pi workflows"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "LaishGlenberg", email = "lglenbe1@asu.edu" }
 ]

@@ -173,3 +173,7 @@ builder.save_fixture("my_demo", "checklist_iteration", roles={"planner": "planne
 
 
 `bash` emits a `.sh` script on POSIX and a `.cmd` script on Windows.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
